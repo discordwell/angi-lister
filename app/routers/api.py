@@ -133,30 +133,17 @@ def api_set_outcome(
     db: Session = Depends(get_bypass_db),
 ):
     """Set the conversion outcome on a lead (booked, won, or lost)."""
-    lead = db.query(Lead).filter(Lead.id == lead_id).first()
-    if not lead:
+    from app.services.metrics import set_lead_outcome
+
+    try:
+        result = set_lead_outcome(db, lead_id, body.outcome, body.notes)
+    except LookupError:
         raise HTTPException(status_code=404, detail="Lead not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
-    valid_from = {"mapped", "booked", "won", "lost"}
-    if lead.status not in valid_from:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot set outcome on lead with status '{lead.status}'",
-        )
-
-    previous_status = lead.status
-    lead.status = body.outcome
-
-    db.add(LeadEvent(
-        lead_id=lead.id,
-        tenant_id=lead.tenant_id,
-        event_type=f"outcome_{body.outcome}",
-        payload={"notes": body.notes, "previous_status": previous_status},
-    ))
     db.commit()
-
-    log.info("Lead %s outcome set to '%s' (was '%s')", lead.id, body.outcome, previous_status)
-    return {"lead_id": lead.id, "status": lead.status, "previous_status": previous_status}
+    return result
 
 
 @router.post("/simulate", response_model=WebhookResponse)

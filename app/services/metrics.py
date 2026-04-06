@@ -254,3 +254,42 @@ def get_duplicate_pairs(db: Session, limit: int = 100, tenant_id: str | None = N
             "created_at": m.created_at,
         })
     return results
+
+
+# ---------------------------------------------------------------------------
+# Lead outcome
+# ---------------------------------------------------------------------------
+
+VALID_OUTCOMES = {"booked", "won", "lost"}
+OUTCOME_VALID_FROM = {"mapped", "booked", "won", "lost"}
+
+
+def set_lead_outcome(db: Session, lead_id: str, outcome: str, notes: str | None = None) -> dict:
+    """Set the conversion outcome on a lead.
+
+    Returns a dict with lead_id, status, and previous_status.
+    Raises LookupError if not found, ValueError for invalid state transitions.
+    """
+    if outcome not in VALID_OUTCOMES:
+        raise ValueError(f"Invalid outcome: {outcome}")
+
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise LookupError(f"Lead {lead_id} not found")
+
+    if lead.status not in OUTCOME_VALID_FROM:
+        raise ValueError(f"Cannot set outcome on lead with status '{lead.status}'")
+
+    previous_status = lead.status
+    lead.status = outcome
+
+    db.add(LeadEvent(
+        lead_id=lead.id,
+        tenant_id=lead.tenant_id,
+        event_type=f"outcome_{outcome}",
+        payload={"notes": notes, "previous_status": previous_status},
+    ))
+    db.flush()
+
+    log.info("Lead %s outcome set to '%s' (was '%s')", lead.id, outcome, previous_status)
+    return {"lead_id": lead.id, "status": lead.status, "previous_status": previous_status}

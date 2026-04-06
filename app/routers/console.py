@@ -154,10 +154,6 @@ def console_lead_detail(
 # Lead outcome
 # ---------------------------------------------------------------------------
 
-VALID_OUTCOMES = {"booked", "won", "lost"}
-OUTCOME_VALID_FROM = {"mapped", "booked", "won", "lost"}
-
-
 @router.post("/leads/{lead_id}/outcome", response_class=HTMLResponse)
 async def console_set_outcome(
     request: Request,
@@ -166,35 +162,20 @@ async def console_set_outcome(
     session: ConsoleSession = Depends(_require_session),
 ):
     """Set the conversion outcome on a lead and redirect back to detail page."""
+    from app.services.metrics import set_lead_outcome
+
     form = await request.form()
     outcome = form.get("outcome", "")
     notes = form.get("notes", "").strip() or None
 
-    if outcome not in VALID_OUTCOMES:
-        raise HTTPException(status_code=422, detail=f"Invalid outcome: {outcome}")
-
-    lead = db.query(Lead).filter(Lead.id == lead_id).first()
-    if not lead:
+    try:
+        set_lead_outcome(db, lead_id, outcome, notes)
+    except LookupError:
         raise HTTPException(status_code=404, detail="Lead not found")
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
-    if lead.status not in OUTCOME_VALID_FROM:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot set outcome on lead with status '{lead.status}'",
-        )
-
-    previous_status = lead.status
-    lead.status = outcome
-
-    db.add(LeadEvent(
-        lead_id=lead.id,
-        tenant_id=lead.tenant_id,
-        event_type=f"outcome_{outcome}",
-        payload={"notes": notes, "previous_status": previous_status},
-    ))
     db.commit()
-
-    log.info("Lead %s outcome set to '%s' via console", lead.id, outcome)
     return RedirectResponse(url=f"/console/leads/{lead_id}", status_code=303)
 
 
