@@ -4,12 +4,12 @@ import csv
 import io
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_bypass_db
-from app.models import AngiMapping, Lead, OutboundMessage, WebhookReceipt, LeadEvent, TenantFile
+from app.models import AngiMapping, DuplicateMatch, Lead, OutboundMessage, WebhookReceipt, LeadEvent, TenantFile
 from app.schemas.angi import AngiLeadPayload
 from app.schemas.api import MetricsSummary, LeadSummary, LeadDetail, DuplicatePair, WebhookResponse, OutcomeRequest
 from app.services.ingestion import process_lead
@@ -248,3 +248,80 @@ def api_replay_unmapped(tenant_id: str, db: Session = Depends(get_bypass_db)):
     db.commit()
     log.info("Replayed %d unmapped leads for tenant %s", replayed, tenant_id)
     return {"replayed": replayed, "tenant_id": tenant_id, "tenant_name": tenant.name}
+
+
+# ── Test data cleanup ────────────────────────────────────────────────────────
+
+CLEANUP_PREFIX = "__contract_test__"
+
+
+@router.post("/test-cleanup")
+def api_test_cleanup(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    x_api_key: str | None = Header(None),
+):
+    """Delete test data created by the contract test suite.
+
+    Requires X-API-KEY auth. Only deletes leads whose CorrelationId
+    starts with the contract test prefix.
+    """
+    if not x_api_key or x_api_key != settings.angi_api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # Find test leads by correlation_id prefix
+    test_leads = (
+        db.query(Lead)
+        .filter(Lead.correlation_id.like(f"{CLEANUP_PREFIX}%"))
+        .all()
+    )
+    lead_ids = [l.id for l in test_leads]
+
+    # Find test receipts by correlation_id prefix
+    test_receipts = (
+        db.query(WebhookReceipt)
+        .filter(WebhookReceipt.correlation_id.like(f"{CLEANUP_PREFIX}%"))
+        .all()
+    )
+    receipt_ids = [r.id for r in test_receipts]
+
+    deleted = {"leads": 0, "receipts": 0, "events": 0, "messages": 0, "duplicates": 0}
+
+    if lead_ids:
+        deleted["duplicates"] = (
+            db.query(DuplicateMatch)
+            .filter(DuplicateMatch.lead_id.in_(lead_ids))
+            .delete(synchronize_session=False)
+        )
+        deleted["messages"] = (
+            db.query(OutboundMessage)
+            .filter(OutboundMessage.lead_id.in_(lead_ids))
+            .delete(synchronize_session=False)
+        )
+        deleted["events"] += (
+            db.query(LeadEvent)
+            .filter(LeadEvent.lead_id.in_(lead_ids))
+            .delete(synchronize_session=False)
+        )
+        deleted["leads"] = (
+            db.query(Lead)
+            .filter(Lead.id.in_(lead_ids))
+            .delete(synchronize_session=False)
+        )
+
+    if receipt_ids:
+        # Events linked to receipt but not to a lead
+        deleted["events"] += (
+            db.query(LeadEvent)
+            .filter(LeadEvent.receipt_id.in_(receipt_ids), LeadEvent.lead_id.is_(None))
+            .delete(synchronize_session=False)
+        )
+        deleted["receipts"] = (
+            db.query(WebhookReceipt)
+            .filter(WebhookReceipt.id.in_(receipt_ids))
+            .delete(synchronize_session=False)
+        )
+
+    db.commit()
+    log.info("Test cleanup: %s", deleted)
+    return {"cleaned": deleted}

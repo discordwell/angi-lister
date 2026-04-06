@@ -435,9 +435,16 @@ if __name__ == "__main__":
 
     import httpx
 
+    LIVE_PREFIX = "__contract_test__"
+
+    def test_corr():
+        """Generate a CorrelationId with the cleanup prefix."""
+        return f"{LIVE_PREFIX}{uuid.uuid4()}"
+
     parser = argparse.ArgumentParser(description="Angi contract tests against live endpoint")
     parser.add_argument("--url", default="https://angi.discordwell.com")
     parser.add_argument("--api-key", default="netic-demo-2026-angi-key")
+    parser.add_argument("--no-cleanup", action="store_true", help="Skip cleanup (leave test data)")
     args = parser.parse_args()
 
     url = args.url.rstrip("/")
@@ -471,7 +478,7 @@ if __name__ == "__main__":
     check("wrong API key → 401", r.status_code == 401, f"got {r.status_code}")
 
     # 4. Exact PDF payload
-    corr1 = str(uuid.uuid4())
+    corr1 = test_corr()
     payload = {**ANGI_PDF_PAYLOAD, "CorrelationId": corr1, "ALAccountId": "100001"}
     r = httpx.post(f"{url}/webhooks/angi/leads", json=payload, headers=headers, timeout=15)
     check("PDF payload → 200", r.status_code == 200, f"got {r.status_code}")
@@ -492,26 +499,26 @@ if __name__ == "__main__":
     check("3rd retry → same lead_id", r3.json().get("lead_id") == lead1)
 
     # 7. Parse failure → 200 with <success>
-    r = httpx.post(f"{url}/webhooks/angi/leads", json={"garbage": True}, headers=headers, timeout=15)
+    bad = {"garbage": True, "CorrelationId": test_corr()}
+    r = httpx.post(f"{url}/webhooks/angi/leads", json=bad, headers=headers, timeout=15)
     check("parse failure → 200", r.status_code == 200, f"got {r.status_code}")
     check("parse failure has <success>", SUCCESS_TAG in r.text,
           f"CRITICAL: Angi will retry without this! Body: {r.text[:200]}")
 
     # 8. Empty payload → 200 with <success>
-    r = httpx.post(f"{url}/webhooks/angi/leads", json={}, headers=headers, timeout=15)
+    empty = {"CorrelationId": test_corr()}
+    r = httpx.post(f"{url}/webhooks/angi/leads", json=empty, headers=headers, timeout=15)
     check("empty payload → 200", r.status_code == 200)
     check("empty payload has <success>", SUCCESS_TAG in r.text)
 
     # 9. Unmapped ALAccountId → 200 with <success>
-    corr = str(uuid.uuid4())
-    umapped = {**ANGI_PDF_PAYLOAD, "CorrelationId": corr, "ALAccountId": "NONEXISTENT-999"}
+    umapped = {**ANGI_PDF_PAYLOAD, "CorrelationId": test_corr(), "ALAccountId": "NONEXISTENT-999"}
     r = httpx.post(f"{url}/webhooks/angi/leads", json=umapped, headers=headers, timeout=15)
     check("unmapped account → 200", r.status_code == 200)
     check("unmapped has <success>", SUCCESS_TAG in r.text)
 
     # 10. Schema drift — extra fields
-    corr = str(uuid.uuid4())
-    drift = {**ANGI_PDF_PAYLOAD, "CorrelationId": corr, "ALAccountId": "100001",
+    drift = {**ANGI_PDF_PAYLOAD, "CorrelationId": test_corr(), "ALAccountId": "100001",
              "NewField": "surprise", "TrackingData": {"nested": True}}
     r = httpx.post(f"{url}/webhooks/angi/leads", json=drift, headers=headers, timeout=15)
     check("extra fields → 200", r.status_code == 200)
@@ -519,27 +526,23 @@ if __name__ == "__main__":
 
     # 11. All 3 tenants
     for acct in ["100001", "100002", "100003"]:
-        corr = str(uuid.uuid4())
-        p = {**ANGI_PDF_PAYLOAD, "CorrelationId": corr, "ALAccountId": acct}
+        p = {**ANGI_PDF_PAYLOAD, "CorrelationId": test_corr(), "ALAccountId": acct}
         r = httpx.post(f"{url}/webhooks/angi/leads", json=p, headers=headers, timeout=15)
         check(f"tenant {acct} → 200", r.status_code == 200)
 
     # 12. Unicode handling
-    corr = str(uuid.uuid4())
-    uni = {**ANGI_PDF_PAYLOAD, "CorrelationId": corr, "ALAccountId": "100001",
+    uni = {**ANGI_PDF_PAYLOAD, "CorrelationId": test_corr(), "ALAccountId": "100001",
            "FirstName": "José", "LastName": "García", "Description": "Néed help with A/C — très urgent!"}
     r = httpx.post(f"{url}/webhooks/angi/leads", json=uni, headers=headers, timeout=15)
     check("unicode payload → 200", r.status_code == 200)
 
     # 13. Null optional fields
-    corr = str(uuid.uuid4())
-    nulls = {**ANGI_PDF_PAYLOAD, "CorrelationId": corr, "Source": None, "Description": None}
+    nulls = {**ANGI_PDF_PAYLOAD, "CorrelationId": test_corr(), "Source": None, "Description": None}
     r = httpx.post(f"{url}/webhooks/angi/leads", json=nulls, headers=headers, timeout=15)
     check("null fields → 200 with <success>", r.status_code == 200 and SUCCESS_TAG in r.text)
 
     # 14. Response timing
-    corr = str(uuid.uuid4())
-    p = {**ANGI_PDF_PAYLOAD, "CorrelationId": corr, "ALAccountId": "100001"}
+    p = {**ANGI_PDF_PAYLOAD, "CorrelationId": test_corr(), "ALAccountId": "100001"}
     t0 = time.time()
     r = httpx.post(f"{url}/webhooks/angi/leads", json=p, headers=headers, timeout=15)
     elapsed = time.time() - t0
@@ -551,6 +554,20 @@ if __name__ == "__main__":
     data = r.json()
     check(f"db healthy (={data.get('db')})", data.get("db") == "ok")
     check(f"worker healthy (={data.get('worker')})", data.get("worker") == "ok")
+
+    # ── Cleanup test data ────────────────────────────────────────────────
+    if not args.no_cleanup:
+        print("\nCleaning up test data...")
+        r = httpx.post(
+            f"{url}/api/v1/test-cleanup",
+            headers=headers,
+            timeout=15,
+        )
+        if r.status_code == 200:
+            cleaned = r.json().get("cleaned", {})
+            print(f"  Cleaned: {cleaned}")
+        else:
+            print(f"  WARNING: cleanup failed ({r.status_code}): {r.text[:200]}")
 
     # Report
     print()
