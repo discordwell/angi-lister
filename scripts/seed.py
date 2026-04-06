@@ -76,9 +76,14 @@ def seed(reset: bool = False) -> None:
     try:
         if reset:
             print("Resetting: dropping and recreating tables...")
-            from app.db.session import engine
-            Base.metadata.drop_all(engine)
-            Base.metadata.create_all(engine)
+            import os
+            from sqlalchemy import create_engine
+            # Use superuser URL for DDL operations (drop/create)
+            migration_url = os.environ.get("MIGRATION_DATABASE_URL") or settings.migration_database_url or settings.database_url
+            su_engine = create_engine(migration_url)
+            Base.metadata.drop_all(su_engine)
+            Base.metadata.create_all(su_engine)
+            su_engine.dispose()
 
         existing = db.query(Tenant).count()
         if existing > 0 and not reset:

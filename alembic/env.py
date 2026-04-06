@@ -16,8 +16,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url from environment if available
-db_url = os.environ.get("DATABASE_URL")
+# Migrations use MIGRATION_DATABASE_URL (superuser) if set, else DATABASE_URL
+db_url = os.environ.get("MIGRATION_DATABASE_URL") or os.environ.get("DATABASE_URL")
 if db_url:
     config.set_main_option("sqlalchemy.url", db_url)
 

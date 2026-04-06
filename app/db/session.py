@@ -33,10 +33,15 @@ def get_db():
 
 
 def get_bypass_db():
-    """DB session that bypasses RLS — for webhook handler, worker, auth, system."""
+    """DB session that bypasses RLS — for webhook handler, worker, auth, system.
+
+    Uses session_scope=True (SET, not SET LOCAL) so the bypass survives
+    mid-request commits. The session is created/destroyed per-request so
+    the setting doesn't leak between requests.
+    """
     db = SessionLocal()
     try:
-        set_tenant(db, "__bypass__")
+        set_tenant(db, "__bypass__", session_scope=True)
         yield db
     finally:
         db.close()

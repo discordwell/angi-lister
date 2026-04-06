@@ -65,7 +65,7 @@ def _validate_and_cache(request: Request) -> ConsoleSession | None:
     # tenant-scoped session isn't affected by validate_session's commit.
     auth_db = SessionLocal()
     try:
-        set_tenant(auth_db, "__bypass__")
+        set_tenant(auth_db, "__bypass__", session_scope=True)
         session = validate_session(auth_db, cookie)
         if session:
             # Force-load all attributes before detaching, so the object
@@ -104,9 +104,9 @@ def get_console_db(request: Request):
     db = SessionLocal()
     try:
         if session and session.tenant_id:
-            set_tenant(db, session.tenant_id)
+            set_tenant(db, session.tenant_id, session_scope=True)
         else:
-            set_tenant(db, "__all__")
+            set_tenant(db, "__all__", session_scope=True)
         yield db
     finally:
         db.close()
@@ -627,9 +627,9 @@ async def console_events(
             db = SessionLocal()
             try:
                 if tenant_id:
-                    set_tenant(db, tenant_id)
+                    set_tenant(db, tenant_id, session_scope=True)
                 else:
-                    set_tenant(db, "__all__")
+                    set_tenant(db, "__all__", session_scope=True)
 
                 events = (
                     db.query(LeadEvent)

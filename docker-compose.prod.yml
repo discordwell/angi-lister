@@ -8,6 +8,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-angi_lister}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./infra/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-angi} -d ${POSTGRES_DB:-angi_lister}"]
       interval: 5s
@@ -18,8 +19,6 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-angi}:${POSTGRES_PASSWORD:-angi}@db:5432/${POSTGRES_DB:-angi_lister}
     ports:
       - "127.0.0.1:8090:8000"
     depends_on:
@@ -36,8 +35,6 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-angi}:${POSTGRES_PASSWORD:-angi}@db:5432/${POSTGRES_DB:-angi_lister}
     depends_on:
       db:
         condition: service_healthy
