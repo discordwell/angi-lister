@@ -60,13 +60,16 @@ def run_cycle(db: Session) -> int:
     for msg in messages:
         if _shutdown:
             break
+        msg_id = msg.id  # capture before any ORM expiry
         try:
             process_outbound_message(db, msg)
             db.commit()
             processed += 1
         except Exception:
             db.rollback()
-            log.exception("Error processing outbound message %s", msg.id)
+            # Re-set bypass after rollback — rollback can clear SET on some drivers
+            set_tenant(db, "__bypass__", session_scope=True)
+            log.exception("Error processing outbound message %s (will retry)", msg_id)
 
     return processed
 
