@@ -54,8 +54,7 @@ def console_dashboard(
 ):
     metrics = get_metrics_summary(db)
     leads = get_recent_leads(db, limit=50)
-    return templates.TemplateResponse("console/dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "console/dashboard.html", {
         "metrics": metrics,
         "leads": leads,
         "page_title": "Dashboard",
@@ -76,8 +75,7 @@ def console_lead_detail(
     detail = get_lead_detail(db, lead_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return templates.TemplateResponse("console/lead_detail.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "console/lead_detail.html", {
         "lead": detail,
         "page_title": f"Lead: {detail['first_name']} {detail['last_name']}",
     })
@@ -94,8 +92,7 @@ def console_duplicates(
     credentials: HTTPBasicCredentials = Depends(_verify_credentials),
 ):
     pairs = get_duplicate_pairs(db, limit=100)
-    return templates.TemplateResponse("console/duplicates.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "console/duplicates.html", {
         "pairs": pairs,
         "page_title": "Duplicate Leads",
     })
@@ -110,8 +107,7 @@ def console_simulate_form(
     request: Request,
     credentials: HTTPBasicCredentials = Depends(_verify_credentials),
 ):
-    return templates.TemplateResponse("console/simulate.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "console/simulate.html", {
         "page_title": "Simulate Lead",
         "result": None,
         "error": None,
@@ -151,8 +147,7 @@ async def console_simulate_submit(
     try:
         payload = AngiLeadPayload.model_validate(form_data)
     except ValidationError as exc:
-        return templates.TemplateResponse("console/simulate.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "console/simulate.html", {
             "page_title": "Simulate Lead",
             "result": None,
             "error": f"Validation error: {exc.error_count()} issue(s). {exc.errors()}",
@@ -174,8 +169,7 @@ async def console_simulate_submit(
 
     log.info("Simulated lead created via console: %s", lead.id)
 
-    return templates.TemplateResponse("console/simulate.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "console/simulate.html", {
         "page_title": "Simulate Lead",
         "result": {
             "lead_id": lead.id,
