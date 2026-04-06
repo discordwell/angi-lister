@@ -12,9 +12,9 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.session import get_bypass_db, SessionLocal, _set_tenant
+from app.db.session import get_bypass_db, SessionLocal, set_tenant
 from app.templates_config import templates
-from app.models import ConsoleSession, WebhookReceipt, LeadEvent
+from app.models import ConsoleSession, Lead, WebhookReceipt, LeadEvent
 from app.schemas.angi import AngiLeadPayload
 from app.services.auth import COOKIE_NAME, validate_session
 from app.services.ingestion import process_lead
@@ -48,7 +48,7 @@ def _validate_and_cache(request: Request) -> ConsoleSession | None:
     # tenant-scoped session isn't affected by validate_session's commit.
     auth_db = SessionLocal()
     try:
-        _set_tenant(auth_db, "__bypass__")
+        set_tenant(auth_db, "__bypass__")
         session = validate_session(auth_db, cookie)
     finally:
         auth_db.close()
@@ -75,9 +75,9 @@ def get_console_db(request: Request):
     db = SessionLocal()
     try:
         if session and session.tenant_id:
-            _set_tenant(db, session.tenant_id)
+            set_tenant(db, session.tenant_id)
         else:
-            _set_tenant(db, "__all__")
+            set_tenant(db, "__all__")
         yield db
     finally:
         db.close()
@@ -251,9 +251,9 @@ async def console_events(
             db = SessionLocal()
             try:
                 if tenant_id:
-                    _set_tenant(db, tenant_id)
+                    set_tenant(db, tenant_id)
                 else:
-                    _set_tenant(db, "__all__")
+                    set_tenant(db, "__all__")
 
                 events = (
                     db.query(LeadEvent)

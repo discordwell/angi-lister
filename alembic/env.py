@@ -39,7 +39,7 @@ def run_migrations_online() -> None:
     )
     with connectable.connect() as connection:
         # Bypass RLS so migrations can read/write all tables
-        connection.execute(text("SET app.current_tenant = '__bypass__'"))
+        connection.execute(text("SET LOCAL app.current_tenant = '__bypass__'"))
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()

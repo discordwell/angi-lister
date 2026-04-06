@@ -7,16 +7,20 @@ engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
-def _set_tenant(db: Session, tenant_id: str) -> None:
-    """Set the RLS tenant context on the current transaction.
+def set_tenant(db: Session, tenant_id: str, *, session_scope: bool = False) -> None:
+    """Set the RLS tenant context.
 
-    Uses SET LOCAL so the setting is scoped to the current transaction
-    and automatically reset on commit/rollback. No-op on SQLite (no RLS).
+    By default uses SET LOCAL (transaction-scoped, resets on commit/rollback).
+    Pass session_scope=True to use SET (connection-scoped) — use this for
+    long-lived sessions that commit mid-work (e.g. the worker loop).
+
+    No-op on SQLite (no RLS).
     """
     bind = db.get_bind()
     if bind.dialect.name != "postgresql":
         return
-    db.execute(text("SET LOCAL app.current_tenant = :tid"), {"tid": tenant_id})
+    scope = "" if session_scope else "LOCAL "
+    db.execute(text(f"SET {scope}app.current_tenant = :tid"), {"tid": tenant_id})
 
 
 def get_db():
@@ -32,17 +36,9 @@ def get_bypass_db():
     """DB session that bypasses RLS — for webhook handler, worker, auth, system."""
     db = SessionLocal()
     try:
-        _set_tenant(db, "__bypass__")
+        set_tenant(db, "__bypass__")
         yield db
     finally:
         db.close()
 
 
-def get_admin_db():
-    """DB session with admin access — sees all tenants, read-only intent."""
-    db = SessionLocal()
-    try:
-        _set_tenant(db, "__all__")
-        yield db
-    finally:
-        db.close()

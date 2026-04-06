@@ -11,7 +11,7 @@ import sys
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.session import SessionLocal, _set_tenant
+from app.db.session import SessionLocal, set_tenant
 from app.models import Base, Tenant, AngiMapping, TenantHomeBase, TenantJobRule, TenantSpecial
 
 
@@ -72,7 +72,7 @@ DEMO_TENANTS = [
 
 def seed(reset: bool = False) -> None:
     db = SessionLocal()
-    _set_tenant(db, "__bypass__")
+    set_tenant(db, "__bypass__")
     try:
         if reset:
             print("Resetting: dropping and recreating tables...")
