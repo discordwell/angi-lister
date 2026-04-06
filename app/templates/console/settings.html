@@ -1,0 +1,79 @@
+{% extends "console/base.html" %}
+{% block content %}
+<h1>Settings</h1>
+
+{% if success %}
+<div class="alert alert-success">{{ success }}</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+    <form method="POST" action="/console/settings">
+        <div class="form-grid">
+
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required
+                       value="{{ current_email }}">
+            </div>
+
+            <div class="form-group">
+                <label for="display_name">Business Name</label>
+                {% if is_admin %}
+                <input type="text" id="display_name" name="display_name"
+                       value="Admin" disabled
+                       style="opacity: 0.5; cursor: not-allowed;">
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                    Admin accounts cannot change the display name.
+                </p>
+                {% else %}
+                <input type="text" id="display_name" name="display_name" required
+                       value="{{ current_name }}">
+                {% endif %}
+            </div>
+
+        </div>
+
+        <div style="margin-top: 16px;">
+            <button type="submit" class="btn">Save Changes</button>
+        </div>
+    </form>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+    <h2 style="margin-bottom: 12px;">Account Info</h2>
+    <table>
+        <tbody>
+            <tr>
+                <td style="color: var(--text-muted); width: 160px;">Role</td>
+                <td>{% if is_admin %}<span class="badge badge-sent">Admin</span>{% else %}<span class="badge badge-mapped">Tenant</span>{% endif %}</td>
+            </tr>
+            {% if tenant %}
+            <tr>
+                <td style="color: var(--text-muted);">Tenant</td>
+                <td>{{ tenant.name }}</td>
+            </tr>
+            <tr>
+                <td style="color: var(--text-muted);">Brand Color</td>
+                <td><span style="display:inline-block; width:14px; height:14px; border-radius:3px; background:{{ tenant.brand_color }}; vertical-align:middle; margin-right:8px;"></span>{{ tenant.brand_color }}</td>
+            </tr>
+            <tr>
+                <td style="color: var(--text-muted);">Phone</td>
+                <td>{{ tenant.phone or 'Not set' }}</td>
+            </tr>
+            <tr>
+                <td style="color: var(--text-muted);">Timezone</td>
+                <td>{{ tenant.timezone }}</td>
+            </tr>
+            {% endif %}
+            <tr>
+                <td style="color: var(--text-muted);">Session ID</td>
+                <td style="font-family: monospace; font-size: 12px;">{{ session.id[:12] }}...</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}

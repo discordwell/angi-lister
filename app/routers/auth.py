@@ -122,6 +122,29 @@ def demo_login(db: Session = Depends(get_bypass_db)):
     return response
 
 
+@router.post("/admin-login")
+def admin_login(db: Session = Depends(get_bypass_db)):
+    """Instant login as admin (no tenant scope — sees all data)."""
+    link, _ = create_magic_link(db, settings.admin_email)
+    raw_token = link.split("token=")[1]
+
+    session = consume_magic_link(db, raw_token)
+    if not session:
+        return RedirectResponse(url="/auth/login", status_code=302)
+
+    response = RedirectResponse(url="/console", status_code=302)
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=session._cookie_value,
+        httponly=True,
+        samesite="lax",
+        secure=not settings.app_url.startswith("http://localhost"),
+        path="/",
+        max_age=settings.session_ttl_days * 86400,
+    )
+    return response
+
+
 @router.get("/callback")
 def auth_callback(token: str, db: Session = Depends(get_bypass_db)):
     """Consume a magic link token and create a session."""

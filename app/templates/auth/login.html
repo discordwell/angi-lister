@@ -168,11 +168,18 @@
 
             {% if demo_tenant %}
             <div class="divider">or</div>
-            <form method="POST" action="/auth/demo-login">
-                <button type="submit" class="btn btn-demo">
-                    Demo as {{ demo_tenant.name }}
-                </button>
-            </form>
+            <div style="display: flex; gap: 8px;">
+                <form method="POST" action="/auth/demo-login" style="flex:1;">
+                    <button type="submit" class="btn btn-demo" style="width:100%;">
+                        Demo as {{ demo_tenant.name }}
+                    </button>
+                </form>
+                <form method="POST" action="/auth/admin-login" style="flex:1;">
+                    <button type="submit" class="btn btn-demo" style="width:100%;">
+                        Demo as Admin
+                    </button>
+                </form>
+            </div>
             {% endif %}
         </div>
         <p class="footer-note">

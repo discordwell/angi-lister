@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.session import get_bypass_db, SessionLocal, set_tenant
 from app.templates_config import templates
-from app.models import ConsoleSession, Lead, WebhookReceipt, LeadEvent
+from app.models import ConsoleSession, Lead, Tenant, WebhookReceipt, LeadEvent
 from app.schemas.angi import AngiLeadPayload
 from app.services.auth import COOKIE_NAME, validate_session
 from app.services.ingestion import process_lead
@@ -125,6 +125,54 @@ def console_lead_detail(
 
 
 # ---------------------------------------------------------------------------
+# Lead outcome
+# ---------------------------------------------------------------------------
+
+VALID_OUTCOMES = {"booked", "won", "lost"}
+OUTCOME_VALID_FROM = {"mapped", "booked", "won", "lost"}
+
+
+@router.post("/leads/{lead_id}/outcome", response_class=HTMLResponse)
+async def console_set_outcome(
+    request: Request,
+    lead_id: str,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    """Set the conversion outcome on a lead and redirect back to detail page."""
+    form = await request.form()
+    outcome = form.get("outcome", "")
+    notes = form.get("notes", "").strip() or None
+
+    if outcome not in VALID_OUTCOMES:
+        raise HTTPException(status_code=422, detail=f"Invalid outcome: {outcome}")
+
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    if lead.status not in OUTCOME_VALID_FROM:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot set outcome on lead with status '{lead.status}'",
+        )
+
+    previous_status = lead.status
+    lead.status = outcome
+
+    db.add(LeadEvent(
+        lead_id=lead.id,
+        tenant_id=lead.tenant_id,
+        event_type=f"outcome_{outcome}",
+        payload={"notes": notes, "previous_status": previous_status},
+    ))
+    db.commit()
+
+    log.info("Lead %s outcome set to '%s' via console", lead.id, outcome)
+    return RedirectResponse(url=f"/console/leads/{lead_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
 # Duplicates
 # ---------------------------------------------------------------------------
 
@@ -228,6 +276,84 @@ async def console_simulate_submit(
         "error": None,
         "form_data": form_data,
         "session": session,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+@router.get("/settings", response_class=HTMLResponse)
+def console_settings(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    is_admin = session.tenant_id is None
+    tenant = db.query(Tenant).filter(Tenant.id == session.tenant_id).first() if session.tenant_id else None
+
+    return templates.TemplateResponse(request, "console/settings.html", {
+        "page_title": "Settings",
+        "session": session,
+        "is_admin": is_admin,
+        "tenant": tenant,
+        "current_email": session.email,
+        "current_name": tenant.name if tenant else "Admin",
+        "success": None,
+        "error": None,
+    })
+
+
+@router.post("/settings", response_class=HTMLResponse)
+async def console_settings_save(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    form = await request.form()
+    new_email = form.get("email", "").strip()
+    new_name = form.get("display_name", "").strip()
+
+    is_admin = session.tenant_id is None
+    tenant = db.query(Tenant).filter(Tenant.id == session.tenant_id).first() if session.tenant_id else None
+
+    if not new_email or "@" not in new_email:
+        return templates.TemplateResponse(request, "console/settings.html", {
+            "page_title": "Settings",
+            "session": session,
+            "is_admin": is_admin,
+            "tenant": tenant,
+            "current_email": session.email,
+            "current_name": tenant.name if tenant else "Admin",
+            "success": None,
+            "error": "Please enter a valid email address.",
+        })
+
+    # Update session email
+    session.email = new_email
+    db.add(session)
+
+    # Update tenant name + email if tenant user
+    if tenant and not is_admin:
+        if new_name:
+            tenant.name = new_name
+            tenant.email_from_name = new_name
+        tenant.email = new_email
+        db.add(tenant)
+
+    db.commit()
+
+    log.info("Settings updated for session %s (email=%s)", session.id, new_email)
+
+    return templates.TemplateResponse(request, "console/settings.html", {
+        "page_title": "Settings",
+        "session": session,
+        "is_admin": is_admin,
+        "tenant": tenant,
+        "current_email": new_email,
+        "current_name": tenant.name if tenant else "Admin",
+        "success": "Settings saved.",
+        "error": None,
     })
 
 

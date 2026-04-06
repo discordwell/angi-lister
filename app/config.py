@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     openai_timeout: float = 10.0
     here_api_key: str = ""
     geocode_cache_ttl_days: int = 90
+    admin_email: str = "cordwell@gmail.com"
+    alert_email: str = ""
+    alert_error_threshold: int = 3
+    alert_window_minutes: int = 60
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
