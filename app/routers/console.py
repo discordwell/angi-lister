@@ -64,6 +64,11 @@ def _validate_and_cache(request: Request) -> ConsoleSession | None:
     try:
         set_tenant(auth_db, "__bypass__")
         session = validate_session(auth_db, cookie)
+        if session:
+            # Force-load all attributes before detaching, so the object
+            # stays usable after auth_db is closed.
+            _ = session.tenant_id, session.email, session.id
+            auth_db.expunge(session)
     finally:
         auth_db.close()
 
@@ -75,7 +80,14 @@ def _require_session(request: Request) -> ConsoleSession:
     """Verify the user has a valid session cookie, or redirect to login."""
     session = _validate_and_cache(request)
     if not session:
-        raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
+        # Clear stale cookie on redirect to prevent loops
+        raise HTTPException(
+            status_code=302,
+            headers={
+                "Location": "/auth/login",
+                "Set-Cookie": f"{COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly",
+            },
+        )
     return session
 
 
