@@ -43,8 +43,8 @@
 
         <div class="form-group">
             <label for="sample_email">Sample Email</label>
-            <textarea id="sample_email" name="sample_email" rows="6"
-                placeholder="Write a sample outreach email in your company's voice. For example:&#10;&#10;We got your request and we're excited to help! Our team has been serving the area for over 20 years. Whether it's a quick fix or a full replacement, we've got you covered.&#10;&#10;Let's get something on the calendar — reply to this email or give us a call."
+            <textarea id="sample_email" name="sample_email" rows="6" style="max-height:200px;"
+                placeholder="Write a sample outreach email in your company's voice. The AI will match this tone when writing to leads."
             >{{ tenant.sample_email or '' }}</textarea>
             <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">
                 The AI will match this voice and tone when writing personalized emails to your leads.
