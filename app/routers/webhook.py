@@ -128,20 +128,26 @@ async def receive_angi_lead(
 
     lead = process_lead(db, receipt, payload)
 
+    # Capture IDs before commit — after commit, SQLAlchemy expires objects and
+    # the refresh SELECT can fail under RLS if the connection pool resets context.
+    receipt_id = receipt.id
+    lead_id = lead.id
+    correlation_id = lead.correlation_id
+
     resp_body = (
-        f"<success>receipt_id={receipt.id} "
-        f"lead_id={lead.id} "
-        f"correlation_id={lead.correlation_id}</success>"
+        f"<success>receipt_id={receipt_id} "
+        f"lead_id={lead_id} "
+        f"correlation_id={correlation_id}</success>"
     )
     receipt.response_body = resp_body
     db.commit()
 
-    log.info("Lead ingested: receipt=%s lead=%s", receipt.id, lead.id)
+    log.info("Lead ingested: receipt=%s lead=%s", receipt_id, lead_id)
 
     return WebhookResponse(
-        receipt_id=receipt.id,
-        lead_id=lead.id,
-        correlation_id=lead.correlation_id,
+        receipt_id=receipt_id,
+        lead_id=lead_id,
+        correlation_id=correlation_id,
         message=resp_body,
     )
 
