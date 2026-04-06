@@ -54,6 +54,16 @@
         </div>
         <div class="metric-label">Parse Failures</div>
     </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if metrics.conversion_rate is not none and metrics.conversion_rate >= 0.3 %}ok{% elif metrics.conversion_rate is not none and metrics.conversion_rate > 0 %}warn{% endif %}">
+            {% if metrics.conversion_rate is not none %}
+                {{ "%.1f"|format(metrics.conversion_rate * 100) }}%
+            {% else %}
+                —
+            {% endif %}
+        </div>
+        <div class="metric-label">Conversion Rate</div>
+    </div>
 </div>
 
 <!-- Recent leads table -->

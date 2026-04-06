@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_bypass_db
 from app.models import OutboundMessage
-from app.schemas.api import HealthResponse, ReadyResponse
+from app.schemas.api import HealthResponse, ReadyResponse, SchemaHealthResponse
 
 router = APIRouter()
 
@@ -40,3 +40,22 @@ def readyz(db: Session = Depends(get_bypass_db)):
 
     status = "ok" if db_status == "ok" and worker_status == "ok" else "degraded"
     return ReadyResponse(status=status, db=db_status, worker=worker_status)
+
+
+@router.get("/api/v1/health/schema", response_model=SchemaHealthResponse)
+def schema_health(db: Session = Depends(get_bypass_db)):
+    """Check for schema drift and parse error rate in last 24 hours."""
+    from app.services.monitoring import check_schema_drift, check_error_rate
+
+    drift = check_schema_drift(db, window_hours=24)
+    errors = check_error_rate(db)
+
+    status = "ok"
+    if drift or errors:
+        status = "degraded"
+
+    return SchemaHealthResponse(
+        status=status,
+        schema_drift=drift,
+        error_rate=errors,
+    )

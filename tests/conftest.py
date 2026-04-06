@@ -7,6 +7,9 @@ os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["ANGI_API_KEY"] = "test-key"
 os.environ["RESEND_API_KEY"] = ""
 os.environ["SENDER_EMAIL"] = "test@example.com"
+os.environ["ALERT_EMAIL"] = ""
+os.environ["ALERT_ERROR_THRESHOLD"] = "3"
+os.environ["ALERT_WINDOW_MINUTES"] = "60"
 
 import pytest
 from fastapi.testclient import TestClient

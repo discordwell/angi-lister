@@ -11,6 +11,7 @@ from app.models.tenant_job_rule import TenantJobRule
 from app.models.tenant_special import TenantSpecial
 from app.models.geocode_cache import GeocodeCache
 from app.models.auth import MagicLinkToken, ConsoleSession
+from app.models.api_key import ApiKey
 
 __all__ = [
     "Base",
@@ -27,4 +28,5 @@ __all__ = [
     "GeocodeCache",
     "MagicLinkToken",
     "ConsoleSession",
+    "ApiKey",
 ]

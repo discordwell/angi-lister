@@ -4,14 +4,14 @@ import csv
 import io
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_bypass_db
 from app.models import AngiMapping, Lead, OutboundMessage, WebhookReceipt, LeadEvent
 from app.schemas.angi import AngiLeadPayload
-from app.schemas.api import MetricsSummary, LeadSummary, LeadDetail, DuplicatePair, WebhookResponse
+from app.schemas.api import MetricsSummary, LeadSummary, LeadDetail, DuplicatePair, WebhookResponse, OutcomeRequest
 from app.services.ingestion import process_lead
 from app.services.metrics import (
     get_metrics_summary,
@@ -20,9 +20,24 @@ from app.services.metrics import (
     get_duplicate_pairs,
 )
 
+from app.config import settings
+from app.templates_config import templates
+
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1")
+
+
+@router.get("/docs", response_class=HTMLResponse, include_in_schema=False)
+def api_docs_page(request: Request):
+    """Public API documentation page."""
+    from pathlib import Path
+    from jinja2 import Environment, FileSystemLoader
+
+    tpl_dir = Path(__file__).resolve().parent.parent / "templates"
+    env = Environment(loader=FileSystemLoader(str(tpl_dir)), autoescape=True)
+    html = env.get_template("api_docs.html").render(base_url=settings.app_url)
+    return HTMLResponse(content=html)
 
 
 @router.get("/metrics", response_model=MetricsSummary)
@@ -109,6 +124,39 @@ def api_duplicates_export(db: Session = Depends(get_bypass_db)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=duplicate_leads_rebate.csv"},
     )
+
+
+@router.post("/leads/{lead_id}/outcome")
+def api_set_outcome(
+    lead_id: str,
+    body: OutcomeRequest,
+    db: Session = Depends(get_bypass_db),
+):
+    """Set the conversion outcome on a lead (booked, won, or lost)."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    valid_from = {"mapped", "booked", "won", "lost"}
+    if lead.status not in valid_from:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot set outcome on lead with status '{lead.status}'",
+        )
+
+    previous_status = lead.status
+    lead.status = body.outcome
+
+    db.add(LeadEvent(
+        lead_id=lead.id,
+        tenant_id=lead.tenant_id,
+        event_type=f"outcome_{body.outcome}",
+        payload={"notes": body.notes, "previous_status": previous_status},
+    ))
+    db.commit()
+
+    log.info("Lead %s outcome set to '%s' (was '%s')", lead.id, body.outcome, previous_status)
+    return {"lead_id": lead.id, "status": lead.status, "previous_status": previous_status}
 
 
 @router.post("/simulate", response_model=WebhookResponse)

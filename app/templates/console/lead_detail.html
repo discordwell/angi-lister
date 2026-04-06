@@ -34,6 +34,27 @@
             </table>
         </div>
 
+        <!-- Outcome section -->
+        {% if lead.status in ['mapped', 'booked', 'won', 'lost'] %}
+        <div class="card" id="outcome-section">
+            <h2>Conversion Outcome</h2>
+            {% if lead.status in ['booked', 'won', 'lost'] %}
+            <p style="margin-bottom: 12px;">
+                Current outcome: <span class="badge badge-{{ lead.status }}" style="font-size: 14px; padding: 4px 14px;">{{ lead.status }}</span>
+            </p>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Change outcome:</p>
+            {% else %}
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Mark this lead's conversion status:</p>
+            {% endif %}
+            <form method="post" action="/console/leads/{{ lead.id }}/outcome" style="display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;">
+                <button type="submit" name="outcome" value="booked" class="btn btn-sm btn-green{% if lead.status == 'booked' %} btn-outline{% endif %}">Booked</button>
+                <button type="submit" name="outcome" value="won" class="btn btn-sm btn-green{% if lead.status == 'won' %} btn-outline{% endif %}">Won</button>
+                <button type="submit" name="outcome" value="lost" class="btn btn-sm btn-red{% if lead.status == 'lost' %} btn-outline{% endif %}">Lost</button>
+                <input type="text" name="notes" placeholder="Notes (optional)" style="max-width: 250px; padding: 6px 10px; font-size: 13px;">
+            </form>
+        </div>
+        {% endif %}
+
         {% if lead.description %}
         <div class="card">
             <h2>Description</h2>

@@ -110,6 +110,14 @@ async def receive_angi_lead(
         db.commit()
 
         log.warning("Parse failure on receipt %s: %s", receipt.id, exc.error_count())
+
+        # Lightweight alert check (debounced, non-fatal)
+        try:
+            from app.services.monitoring import check_and_alert_parse_failure
+            check_and_alert_parse_failure(db)
+        except Exception:
+            log.exception("Alert check failed (non-fatal)")
+
         return resp
 
     # ---- Parse succeeded — ingest --------------------------------------------

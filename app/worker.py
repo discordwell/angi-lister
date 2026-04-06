@@ -30,6 +30,7 @@ logging.basicConfig(
 log = logging.getLogger("angi-worker")
 
 _shutdown = False
+_last_daily_check: float = 0.0
 
 
 def _handle_signal(signum, _frame):
@@ -91,6 +92,25 @@ def _recover_stuck_messages(db: Session) -> int:
     return len(stuck)
 
 
+def _maybe_run_daily_check(db: Session) -> None:
+    """Run monitoring health checks every 24 hours."""
+    global _last_daily_check
+    now = time.time()
+    if now - _last_daily_check < 86400:
+        return
+    _last_daily_check = now
+    try:
+        from app.services.monitoring import run_daily_health_check
+        results = run_daily_health_check(db)
+        issues = {k: v for k, v in results.items() if v is not None}
+        if issues:
+            log.info("Daily health check found %d issue(s): %s", len(issues), list(issues.keys()))
+        else:
+            log.info("Daily health check: all clear")
+    except Exception:
+        log.exception("Daily health check failed")
+
+
 def main() -> None:
     """Entry point — poll loop."""
     signal.signal(signal.SIGINT, _handle_signal)
@@ -120,6 +140,7 @@ def main() -> None:
             processed = run_cycle(db)
             if processed:
                 log.info("Processed %d message(s) this cycle", processed)
+            _maybe_run_daily_check(db)
         except Exception:
             log.exception("Unhandled error in worker cycle")
         finally:

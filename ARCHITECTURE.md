@@ -45,6 +45,17 @@ Two levels:
 1. **CorrelationId idempotency** — exact retries are no-ops
 2. **Fingerprint matching** — normalized email + phone + address similarity detects when the same consumer submits multiple requests. Evidence is stored for rebate claims.
 
+### Conversion Tracking
+Leads can be marked as `booked`, `won`, or `lost` via the API or console UI. Status transitions are recorded as `LeadEvent` entries (`outcome_booked`, `outcome_won`, `outcome_lost`) with optional notes. A conversion rate KPI (`(booked + won) / (mapped + booked + won + lost)`) is computed and shown on the dashboard.
+
+### Schema Drift Monitoring
+The webhook handler detects schema drift (missing/extra fields) on every receipt. A monitoring service (`app/services/monitoring.py`) provides:
+- **Real-time alerting** — after parse failures, a debounced check (30-min cooldown) fires an email alert if the error rate exceeds the threshold within the configured window
+- **Daily health check** — the worker runs all monitoring checks every 24 hours and sends a summary email if issues are found
+- **Schema health endpoint** — `GET /api/v1/health/schema` returns drift and error rate status
+
+Config: `ALERT_EMAIL`, `ALERT_ERROR_THRESHOLD` (default 3), `ALERT_WINDOW_MINUTES` (default 60).
+
 ## Data Model
 
 - **tenants** — Business identity, branding, email templates (no RLS — lookup table)
