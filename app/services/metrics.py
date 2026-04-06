@@ -181,12 +181,15 @@ def get_lead_detail(db: Session, lead_id: str, tenant_id: str | None = None) -> 
             "channel": m.channel,
             "recipient": m.recipient,
             "subject": m.subject,
+            "body_html": m.body_html,
+            "body_text": m.body_text,
             "status": m.status,
             "attempts": m.attempts,
             "last_error": m.last_error,
             "queued_at": str(m.queued_at),
             "sent_at": str(m.sent_at) if m.sent_at else None,
             "is_simulated": m.is_simulated,
+            "generation_method": m.generation_method,
         }
         for m in lead.outbound_messages
     ]

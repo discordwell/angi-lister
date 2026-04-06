@@ -1,0 +1,324 @@
+{% extends "console/base.html" %}
+{% block content %}
+<h1>Email Setup</h1>
+
+{% if success %}
+<div class="alert alert-success">{{ success }}</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<!-- ── Section 1: AI Personalization Toggle ─────────────────────────── -->
+<div class="card">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <div>
+            <h2 style="margin-bottom:4px;">AI Personalization</h2>
+            <p style="font-size:13px; color:var(--text-muted); margin:0;">
+                When enabled, incoming leads get a personalized AI-generated email instead of a generic template.
+            </p>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+            {% if tenant.personalization_enabled %}
+            <span class="badge badge-sent">Active</span>
+            {% else %}
+            <span class="badge badge-pending">Disabled</span>
+            {% endif %}
+            <form method="POST" action="/console/email" style="margin:0;">
+                <input type="hidden" name="_action" value="toggle">
+                <input type="hidden" name="personalization_enabled" value="{{ 'false' if tenant.personalization_enabled else 'true' }}">
+                <button type="submit" class="btn btn-sm {% if tenant.personalization_enabled %}btn-outline{% else %}btn-green{% endif %}">
+                    {{ 'Disable' if tenant.personalization_enabled else 'Enable' }}
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ── Section 2: Voice & Tone ──────────────────────────────────────── -->
+<div class="card">
+    <h2>Voice & Tone</h2>
+    <form method="POST" action="/console/email">
+        <input type="hidden" name="_action" value="save_config">
+
+        <div class="form-group">
+            <label for="sample_email">Sample Email</label>
+            <textarea id="sample_email" name="sample_email" rows="6"
+                placeholder="Write a sample outreach email in your company's voice. For example:&#10;&#10;We got your request and we're excited to help! Our team has been serving the area for over 20 years. Whether it's a quick fix or a full replacement, we've got you covered.&#10;&#10;Let's get something on the calendar — reply to this email or give us a call."
+            >{{ tenant.sample_email or '' }}</textarea>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">
+                The AI will match this voice and tone when writing personalized emails to your leads.
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label for="llm_system_prompt">Custom Instructions (optional)</label>
+            <textarea id="llm_system_prompt" name="llm_system_prompt" rows="3"
+                placeholder="e.g., Always mention our 24/7 emergency line. Never offer discounts over 20%."
+            >{{ tenant.llm_system_prompt or '' }}</textarea>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">
+                Extra rules the AI follows. Leave blank to use defaults.
+            </p>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="brand_color">Brand Color</label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="color" id="brand_color_picker" value="{{ tenant.brand_color or '#3b82f6' }}"
+                        style="width:44px; height:38px; padding:2px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); cursor:pointer;"
+                        oninput="document.getElementById('brand_color').value=this.value">
+                    <input type="text" id="brand_color" name="brand_color"
+                        value="{{ tenant.brand_color or '#3b82f6' }}" style="font-family:monospace;"
+                        oninput="document.getElementById('brand_color_picker').value=this.value">
+                </div>
+                <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">Used in the email header.</p>
+            </div>
+        </div>
+
+        <button type="submit" class="btn">Save Voice & Brand</button>
+    </form>
+</div>
+
+<!-- ── Section 3: Service Locations ──────────────────────────────────── -->
+<div class="card">
+    <h2>Service Locations</h2>
+    <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+        Your shop/office locations. Leads are matched to the nearest one for proximity pricing.
+    </p>
+
+    {% if home_bases %}
+    <table style="margin-bottom:16px;">
+        <thead>
+            <tr><th>Name</th><th>Address</th><th>Lat</th><th>Lng</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for hb in home_bases %}
+            <tr>
+                <td>{{ hb.name }}</td>
+                <td style="color:var(--text-muted);">{{ hb.address or '—' }}</td>
+                <td style="font-family:monospace; font-size:13px;">{{ "%.4f"|format(hb.lat) }}</td>
+                <td style="font-family:monospace; font-size:13px;">{{ "%.4f"|format(hb.lng) }}</td>
+                <td>
+                    <form method="POST" action="/console/email/home-bases/{{ hb.id }}/delete" style="margin:0;">
+                        <button type="submit" class="btn btn-sm btn-red" onclick="return confirm('Remove this location?')">Remove</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:var(--text-muted); font-size:14px; margin-bottom:16px;">No locations added yet.</p>
+    {% endif %}
+
+    <form method="POST" action="/console/email/home-bases" class="form-grid" style="border-top:1px solid var(--border); padding-top:16px;">
+        <div class="form-group">
+            <label>Location Name *</label>
+            <input type="text" name="name" required placeholder="e.g., Main Office">
+        </div>
+        <div class="form-group">
+            <label>Address</label>
+            <input type="text" name="address" placeholder="e.g., 123 Main St, City, ST">
+        </div>
+        <div class="form-group">
+            <label>Latitude *</label>
+            <input type="text" name="lat" required placeholder="e.g., 38.6270">
+        </div>
+        <div class="form-group">
+            <label>Longitude *</label>
+            <input type="text" name="lng" required placeholder="e.g., -90.1994">
+        </div>
+        <div class="form-group full-width">
+            <button type="submit" class="btn btn-sm">Add Location</button>
+        </div>
+    </form>
+</div>
+
+<!-- ── Section 4: Pricing Tiers ─────────────────────────────────────── -->
+<div class="card">
+    <h2>Pricing Tiers</h2>
+    <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+        Distance-based pricing from your service locations. The AI mentions the applicable tier in outreach emails.
+    </p>
+
+    {% if pricing_tiers %}
+    <table style="margin-bottom:16px;">
+        <thead>
+            <tr><th>Within (miles)</th><th>Price / Offer</th></tr>
+        </thead>
+        <tbody>
+            {% for tier in pricing_tiers %}
+            <tr>
+                <td>{{ tier.max_mi }} mi</td>
+                <td>{{ tier.text }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <form method="POST" action="/console/email" style="border-top:1px solid var(--border); padding-top:16px;">
+        <input type="hidden" name="_action" value="save_pricing">
+        <div class="form-group">
+            <label>Pricing Tiers (one per line: <code>miles, price text</code>)</label>
+            <textarea name="pricing_raw" rows="4" placeholder="1, $39 diagnostic&#10;5, $59 diagnostic&#10;15, $79 diagnostic"
+                style="font-family:monospace;">{% for t in pricing_tiers %}{{ t.max_mi }}, {{ t.text }}{{ '\n' if not loop.last }}{% endfor %}</textarea>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">
+                Example: <code>5, $59 diagnostic</code> means customers within 5 miles see "$59 diagnostic".
+            </p>
+        </div>
+        <button type="submit" class="btn btn-sm">Save Pricing</button>
+    </form>
+</div>
+
+<!-- ── Section 5: Job Rules ─────────────────────────────────────────── -->
+<div class="card">
+    <h2>Job Rules</h2>
+    <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+        Control which job categories you respond to. Blacklisted categories are auto-declined. Wantlisted categories get extra enthusiasm.
+    </p>
+
+    {% set wl = job_rules|selectattr('rule_type', 'equalto', 'whitelist')|list %}
+    {% set bl = job_rules|selectattr('rule_type', 'equalto', 'blacklist')|list %}
+    {% set want = job_rules|selectattr('rule_type', 'equalto', 'wantlist')|list %}
+
+    {% if wl %}
+    <div style="margin-bottom:12px;">
+        <span style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Whitelist</span>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
+            {% for r in wl %}
+            <form method="POST" action="/console/email/job-rules/{{ r.id }}/delete" style="margin:0; display:inline;">
+                <button type="submit" class="badge badge-sent" style="cursor:pointer; border:none; font-size:13px;" title="Click to remove">{{ r.category_pattern }} &times;</button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if bl %}
+    <div style="margin-bottom:12px;">
+        <span style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Blacklist</span>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
+            {% for r in bl %}
+            <form method="POST" action="/console/email/job-rules/{{ r.id }}/delete" style="margin:0; display:inline;">
+                <button type="submit" class="badge badge-failed" style="cursor:pointer; border:none; font-size:13px;" title="Click to remove">{{ r.category_pattern }} &times;</button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if want %}
+    <div style="margin-bottom:12px;">
+        <span style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Wantlist</span>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
+            {% for r in want %}
+            <form method="POST" action="/console/email/job-rules/{{ r.id }}/delete" style="margin:0; display:inline;">
+                <button type="submit" class="badge badge-mapped" style="cursor:pointer; border:none; font-size:13px;" title="Click to remove">{{ r.category_pattern }} &times;</button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not job_rules %}
+    <p style="color:var(--text-muted); font-size:14px; margin-bottom:12px;">No rules — all categories accepted.</p>
+    {% endif %}
+
+    <form method="POST" action="/console/email/job-rules" class="form-grid" style="border-top:1px solid var(--border); padding-top:16px;">
+        <div class="form-group">
+            <label>Category Pattern</label>
+            <input type="text" name="category_pattern" required placeholder="e.g., HVAC, Water Heater, Roofing">
+        </div>
+        <div class="form-group">
+            <label>Rule Type</label>
+            <select name="rule_type" required>
+                <option value="whitelist">Whitelist (respond to these)</option>
+                <option value="blacklist">Blacklist (auto-decline)</option>
+                <option value="wantlist">Wantlist (respond with enthusiasm)</option>
+            </select>
+        </div>
+        <div class="form-group full-width">
+            <button type="submit" class="btn btn-sm">Add Rule</button>
+        </div>
+    </form>
+</div>
+
+<!-- ── Section 6: Specials & Promotions ─────────────────────────────── -->
+<div class="card">
+    <h2>Specials & Promotions</h2>
+    <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+        Active promotions the AI can mention in emails when conditions match.
+    </p>
+
+    {% if specials %}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+        {% for sp in specials %}
+        <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <div>
+                    <strong>{{ sp.name }}</strong>
+                    <span style="margin-left:8px;" class="badge {% if sp.active %}badge-sent{% else %}badge-pending{% endif %}">
+                        {{ 'Active' if sp.active else 'Paused' }}
+                    </span>
+                </div>
+                <form method="POST" action="/console/email/specials/{{ sp.id }}/delete" style="margin:0;">
+                    <button type="submit" class="btn btn-sm btn-outline" style="padding:2px 8px; font-size:11px;" onclick="return confirm('Delete this special?')">&times;</button>
+                </form>
+            </div>
+            <div style="font-size:20px; font-weight:700; color:var(--green); margin:6px 0;">{{ sp.discount_text }}</div>
+            {% if sp.description %}
+            <p style="font-size:13px; color:var(--text-muted); margin:4px 0;">{{ sp.description }}</p>
+            {% endif %}
+            {% if sp.conditions %}
+            <div style="font-size:11px; color:var(--text-muted); margin-top:8px; font-family:monospace;">
+                {% if sp.conditions.category_contains %}category: {{ sp.conditions.category_contains }}{% endif %}
+                {% if sp.conditions.max_distance_mi %} | within {{ sp.conditions.max_distance_mi }}mi{% endif %}
+                {% if sp.conditions.urgency_in %} | urgency: {{ sp.conditions.urgency_in|join(', ') }}{% endif %}
+                {% if sp.conditions.valid_before %} | until {{ sp.conditions.valid_before }}{% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:var(--text-muted); font-size:14px; margin-bottom:12px;">No specials configured.</p>
+    {% endif %}
+
+    <form method="POST" action="/console/email/specials" style="border-top:1px solid var(--border); padding-top:16px;">
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Name *</label>
+                <input type="text" name="name" required placeholder="e.g., Spring AC Tune-Up">
+            </div>
+            <div class="form-group">
+                <label>Discount Text *</label>
+                <input type="text" name="discount_text" required placeholder="e.g., $100 off, Free diagnostic">
+            </div>
+            <div class="form-group full-width">
+                <label>Description</label>
+                <input type="text" name="description" placeholder="Short description for the AI to reference">
+            </div>
+            <div class="form-group">
+                <label>Category Contains</label>
+                <input type="text" name="cond_category" placeholder="e.g., Water Heater">
+            </div>
+            <div class="form-group">
+                <label>Max Distance (miles)</label>
+                <input type="text" name="cond_max_distance" placeholder="e.g., 10">
+            </div>
+            <div class="form-group">
+                <label>Valid Until</label>
+                <input type="text" name="cond_valid_before" placeholder="e.g., 2026-12-31">
+            </div>
+            <div class="form-group">
+                <label>Urgency</label>
+                <input type="text" name="cond_urgency" placeholder="e.g., Today/Emergency">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-sm" style="margin-top:8px;">Add Special</button>
+    </form>
+</div>
+
+{% endblock %}

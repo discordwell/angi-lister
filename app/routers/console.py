@@ -17,7 +17,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.session import get_bypass_db, SessionLocal, set_tenant
 from app.templates_config import templates
-from app.models import ConsoleSession, Lead, Tenant, WebhookReceipt, LeadEvent
+from app.models import (
+    ConsoleSession, Lead, Tenant, WebhookReceipt, LeadEvent,
+    TenantHomeBase, TenantJobRule, TenantSpecial,
+)
 from app.schemas.angi import AngiLeadPayload
 from app.services.auth import COOKIE_NAME, validate_session
 from app.services.ingestion import process_lead
@@ -176,7 +179,12 @@ async def console_set_outcome(
         raise HTTPException(status_code=422, detail=str(exc))
 
     db.commit()
-    return RedirectResponse(url=f"/console/leads/{lead_id}", status_code=303)
+
+    # Redirect back to wherever the user came from
+    referer = request.headers.get("referer", "")
+    if "/console/leads/" in referer:
+        return RedirectResponse(url=f"/console/leads/{lead_id}", status_code=303)
+    return RedirectResponse(url="/console/", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +370,241 @@ async def console_settings_save(
         "success": "Settings saved.",
         "error": None,
     })
+
+
+# ---------------------------------------------------------------------------
+# Email Customization
+# ---------------------------------------------------------------------------
+
+def _email_context(db: Session, tenant: Tenant, session, success=None, error=None) -> dict:
+    """Build the template context for the email setup page."""
+    home_bases = db.query(TenantHomeBase).filter(TenantHomeBase.tenant_id == tenant.id).all()
+    job_rules = db.query(TenantJobRule).filter(TenantJobRule.tenant_id == tenant.id).all()
+    specials = db.query(TenantSpecial).filter(TenantSpecial.tenant_id == tenant.id).all()
+    return {
+        "page_title": "Email Setup",
+        "session": session,
+        "tenant": tenant,
+        "home_bases": home_bases,
+        "job_rules": job_rules,
+        "specials": specials,
+        "pricing_tiers": tenant.pricing_tiers or [],
+        "success": success,
+        "error": error,
+    }
+
+
+def _require_tenant_session(request: Request, db: Session) -> tuple[ConsoleSession, Tenant]:
+    """Require a session with a tenant_id. Returns (session, tenant)."""
+    session = _require_session(request)
+    if not session.tenant_id:
+        raise HTTPException(status_code=403, detail="Admin accounts cannot access email settings")
+    tenant = db.query(Tenant).filter(Tenant.id == session.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return session, tenant
+
+
+@router.get("/email", response_class=HTMLResponse)
+def console_email(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    if not session.tenant_id:
+        raise HTTPException(status_code=403, detail="Admin accounts cannot access email settings")
+    tenant = db.query(Tenant).filter(Tenant.id == session.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return templates.TemplateResponse(request, "console/email.html", _email_context(db, tenant, session))
+
+
+@router.post("/email", response_class=HTMLResponse)
+async def console_email_save(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    sess, tenant = _require_tenant_session(request, db)
+    form = await request.form()
+    action = form.get("_action", "")
+
+    if action == "toggle":
+        val = form.get("personalization_enabled", "false")
+        tenant.personalization_enabled = val.lower() == "true"
+        db.commit()
+        status = "enabled" if tenant.personalization_enabled else "disabled"
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, success=f"AI personalization {status}."))
+
+    if action == "save_config":
+        tenant.sample_email = form.get("sample_email", "").strip() or None
+        tenant.llm_system_prompt = form.get("llm_system_prompt", "").strip() or None
+        tenant.brand_color = form.get("brand_color", "#3b82f6").strip()
+        db.commit()
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, success="Voice & brand settings saved."))
+
+    if action == "save_pricing":
+        raw = form.get("pricing_raw", "").strip()
+        tiers = []
+        if raw:
+            for line in raw.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(",", 1)
+                if len(parts) == 2:
+                    try:
+                        tiers.append({"max_mi": float(parts[0].strip()), "text": parts[1].strip()})
+                    except ValueError:
+                        pass
+        tenant.pricing_tiers = tiers if tiers else None
+        db.commit()
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, success=f"Pricing tiers saved ({len(tiers)} tier(s))."))
+
+    return templates.TemplateResponse(request, "console/email.html",
+        _email_context(db, tenant, session))
+
+
+@router.post("/email/home-bases", response_class=HTMLResponse)
+async def console_add_home_base(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    sess, tenant = _require_tenant_session(request, db)
+    form = await request.form()
+    name = form.get("name", "").strip()
+    try:
+        lat = float(form.get("lat", ""))
+        lng = float(form.get("lng", ""))
+    except (ValueError, TypeError):
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, error="Latitude and longitude must be numbers."))
+
+    if not name:
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, error="Location name is required."))
+
+    db.add(TenantHomeBase(
+        tenant_id=tenant.id, name=name, address=form.get("address", "").strip() or None,
+        lat=lat, lng=lng,
+    ))
+    db.commit()
+    return templates.TemplateResponse(request, "console/email.html",
+        _email_context(db, tenant, session, success=f"Location '{name}' added."))
+
+
+@router.post("/email/home-bases/{hb_id}/delete", response_class=HTMLResponse)
+def console_delete_home_base(
+    hb_id: str,
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    sess, tenant = _require_tenant_session(request, db)
+    hb = db.query(TenantHomeBase).filter(
+        TenantHomeBase.id == hb_id, TenantHomeBase.tenant_id == tenant.id
+    ).first()
+    if hb:
+        db.delete(hb)
+        db.commit()
+    return RedirectResponse(url="/console/email", status_code=302)
+
+
+@router.post("/email/job-rules", response_class=HTMLResponse)
+async def console_add_job_rule(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    sess, tenant = _require_tenant_session(request, db)
+    form = await request.form()
+    pattern = form.get("category_pattern", "").strip()
+    rule_type = form.get("rule_type", "")
+
+    if not pattern or rule_type not in ("whitelist", "blacklist", "wantlist"):
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, error="Category pattern and valid rule type required."))
+
+    db.add(TenantJobRule(tenant_id=tenant.id, category_pattern=pattern, rule_type=rule_type))
+    db.commit()
+    return templates.TemplateResponse(request, "console/email.html",
+        _email_context(db, tenant, session, success=f"Rule added: {rule_type} '{pattern}'."))
+
+
+@router.post("/email/job-rules/{rule_id}/delete", response_class=HTMLResponse)
+def console_delete_job_rule(
+    rule_id: str,
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    sess, tenant = _require_tenant_session(request, db)
+    rule = db.query(TenantJobRule).filter(
+        TenantJobRule.id == rule_id, TenantJobRule.tenant_id == tenant.id
+    ).first()
+    if rule:
+        db.delete(rule)
+        db.commit()
+    return RedirectResponse(url="/console/email", status_code=302)
+
+
+@router.post("/email/specials", response_class=HTMLResponse)
+async def console_add_special(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    sess, tenant = _require_tenant_session(request, db)
+    form = await request.form()
+    name = form.get("name", "").strip()
+    discount_text = form.get("discount_text", "").strip()
+
+    if not name or not discount_text:
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, error="Name and discount text are required."))
+
+    conditions = {}
+    if form.get("cond_category", "").strip():
+        conditions["category_contains"] = form.get("cond_category").strip()
+    if form.get("cond_max_distance", "").strip():
+        try:
+            conditions["max_distance_mi"] = float(form.get("cond_max_distance"))
+        except ValueError:
+            pass
+    if form.get("cond_valid_before", "").strip():
+        conditions["valid_before"] = form.get("cond_valid_before").strip()
+    if form.get("cond_urgency", "").strip():
+        conditions["urgency_in"] = [form.get("cond_urgency").strip()]
+
+    db.add(TenantSpecial(
+        tenant_id=tenant.id, name=name, discount_text=discount_text,
+        description=form.get("description", "").strip() or None,
+        conditions=conditions,
+    ))
+    db.commit()
+    return templates.TemplateResponse(request, "console/email.html",
+        _email_context(db, tenant, session, success=f"Special '{name}' added."))
+
+
+@router.post("/email/specials/{special_id}/delete", response_class=HTMLResponse)
+def console_delete_special(
+    special_id: str,
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    sess, tenant = _require_tenant_session(request, db)
+    sp = db.query(TenantSpecial).filter(
+        TenantSpecial.id == special_id, TenantSpecial.tenant_id == tenant.id
+    ).first()
+    if sp:
+        db.delete(sp)
+        db.commit()
+    return RedirectResponse(url="/console/email", status_code=302)
 
 
 # ---------------------------------------------------------------------------

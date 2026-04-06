@@ -62,38 +62,49 @@
         </div>
         {% endif %}
 
-        <!-- Outbound messages -->
+        <!-- Their request -->
+        {% if lead.description %}
         <div class="card">
-            <h2>Outbound Messages</h2>
+            <h2>Their Request</h2>
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:16px;">
+                <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+                    From {{ lead.first_name }} {{ lead.last_name }} &middot; {{ lead.source or "Angi" }} &middot; {{ lead.urgency or "No urgency specified" }}
+                </div>
+                <p style="line-height:1.6;">{{ lead.description }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Our response -->
+        <div class="card">
+            <h2>Our Response</h2>
             {% if lead.outbound_messages %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Channel</th>
-                        <th>Recipient</th>
-                        <th>Subject</th>
-                        <th>Status</th>
-                        <th>Attempts</th>
-                        <th>Queued</th>
-                        <th>Sent</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for msg in lead.outbound_messages %}
-                    <tr>
-                        <td>{{ msg.channel }}</td>
-                        <td>{{ msg.recipient }}</td>
-                        <td>{{ msg.subject }}</td>
-                        <td><span class="badge badge-{{ msg.status }}">{{ msg.status }}</span></td>
-                        <td>{{ msg.attempts }}</td>
-                        <td style="font-size:13px; color: var(--text-muted);">{{ msg.queued_at }}</td>
-                        <td style="font-size:13px; color: var(--text-muted);">{{ msg.sent_at or "—" }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                {% for msg in lead.outbound_messages %}
+                <div style="margin-bottom:16px; {% if not loop.last %}border-bottom:1px solid var(--border); padding-bottom:16px;{% endif %}">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <div>
+                            <span class="badge badge-{{ msg.status }}">{{ msg.status }}</span>
+                            {% if msg.generation_method %}
+                            <span style="font-size:11px; color:var(--text-muted); margin-left:8px;">via {{ msg.generation_method }}</span>
+                            {% endif %}
+                        </div>
+                        <div style="font-size:12px; color:var(--text-muted);">
+                            {% if msg.sent_at %}Sent {{ msg.sent_at }}{% else %}Queued {{ msg.queued_at }}{% endif %}
+                        </div>
+                    </div>
+                    {% if msg.body_html and msg.body_html != "PLACEHOLDER" %}
+                    <div style="background:#fff; border-radius:var(--radius); padding:2px; max-height:500px; overflow-y:auto;">
+                        <iframe srcdoc="{{ msg.body_html | e }}" style="width:100%; min-height:400px; border:none; border-radius:var(--radius);"></iframe>
+                    </div>
+                    {% elif msg.body_text and msg.body_text != "PLACEHOLDER" %}
+                    <pre style="white-space:pre-wrap; font-size:13px;">{{ msg.body_text }}</pre>
+                    {% else %}
+                    <p style="color:var(--text-muted); font-style:italic;">Email content pending (worker will render on send)</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
             {% else %}
-            <p style="color: var(--text-muted);">No outbound messages.</p>
+            <p style="color: var(--text-muted);">No outbound messages sent yet.</p>
             {% endif %}
         </div>
 

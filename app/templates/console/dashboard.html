@@ -74,24 +74,38 @@
         <thead>
             <tr>
                 <th>Name</th>
-                <th>Email</th>
-                <th>Tenant</th>
                 <th>Category</th>
+                <th>Urgency</th>
                 <th>Status</th>
                 <th>Received</th>
+                <th style="text-align:right;">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for lead in leads %}
             <tr>
-                <td><a href="/console/leads/{{ lead.id }}">{{ lead.first_name }} {{ lead.last_name }}</a></td>
-                <td>{{ lead.email }}</td>
-                <td>{{ lead.tenant_name or "—" }}</td>
+                <td>
+                    <a href="/console/leads/{{ lead.id }}" style="font-weight:600;">{{ lead.first_name }} {{ lead.last_name }}</a>
+                    <div style="font-size:12px; color:var(--text-muted);">{{ lead.email }}</div>
+                </td>
                 <td>{{ lead.category or "—" }}</td>
+                <td>{{ lead.urgency or "—" }}</td>
                 <td>
                     <span class="badge badge-{{ lead.status }}">{{ lead.status }}</span>
                 </td>
                 <td style="color: var(--text-muted); font-size: 13px;">{{ lead.created_at.strftime('%Y-%m-%d %H:%M') if lead.created_at else "—" }}</td>
+                <td style="text-align:right; white-space:nowrap;">
+                    {% if lead.status in ['mapped', 'booked', 'won', 'lost'] %}
+                    <form method="post" action="/console/leads/{{ lead.id }}/outcome" style="display:inline;">
+                        {% if lead.status != 'won' %}
+                        <button type="submit" name="outcome" value="won" class="btn btn-sm btn-green" style="padding:4px 10px; font-size:12px;" title="Mark as converted">Live</button>
+                        {% endif %}
+                        {% if lead.status != 'lost' %}
+                        <button type="submit" name="outcome" value="lost" class="btn btn-sm btn-red" style="padding:4px 10px; font-size:12px;" title="Mark as lost">Dead</button>
+                        {% endif %}
+                    </form>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>

@@ -327,7 +327,11 @@
             <a href="/console/" class="{% if page_title == 'Dashboard' %}active{% endif %}">Dashboard</a>
             <a href="/console/duplicates" class="{% if page_title == 'Duplicate Leads' %}active{% endif %}">Duplicates</a>
             <a href="/console/simulate" class="{% if page_title == 'Simulate Lead' %}active{% endif %}">Simulate</a>
+            {% if session and session.tenant_id %}
+            <a href="/console/email" class="{% if page_title == 'Email Setup' %}active{% endif %}">Email</a>
+            {% endif %}
             <a href="/console/analytics" class="{% if page_title == 'Analytics' %}active{% endif %}">Analytics</a>
+            <a href="/api/v1/docs" style="{% if page_title != 'API Docs' %}{% endif %}">API</a>
             {% if session and not session.tenant_id %}
             <a href="/console/analytics/admin" class="{% if page_title == 'Admin Analytics' %}active{% endif %}">Admin</a>
             {% endif %}
