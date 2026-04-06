@@ -3,7 +3,9 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "postgresql://angi:angi@localhost:5432/angi_lister"
+    migration_database_url: str = ""  # superuser URL for alembic; defaults to database_url
     angi_api_key: str = "test-api-key-change-me"
+    demo_al_account_id: str = "100002"  # Paschal Air — default for unauthenticated demo route
     resend_api_key: str = ""
     sender_email: str = "Netic <noreply@mail.discordwell.com>"
     console_user: str = "admin"
