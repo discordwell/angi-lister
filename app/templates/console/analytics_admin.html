@@ -1,0 +1,343 @@
+{% extends "console/base.html" %}
+{% block content %}
+
+<style>
+    .badge-good { background: rgba(34,197,94,0.15); color: #22c55e; }
+    .badge-warn { background: rgba(234,179,8,0.15); color: #eab308; }
+    .badge-critical { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+    .brand-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+
+    .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    .page-header h1 { margin-bottom: 0; }
+
+    .admin-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        background: rgba(59,130,246,0.15);
+        color: var(--accent);
+        margin-left: 10px;
+        vertical-align: middle;
+    }
+
+    .period-selector { display: flex; gap: 4px; }
+    .period-selector a {
+        padding: 6px 14px;
+        border-radius: var(--radius);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .period-selector a:hover {
+        background: var(--surface-hover);
+        color: var(--text);
+        text-decoration: none;
+    }
+    .period-selector a.active {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+    }
+
+    .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+    @media (max-width: 768px) {
+        .two-col { grid-template-columns: 1fr; }
+    }
+
+    .chart-subtitle {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-top: 8px;
+        text-align: center;
+    }
+
+    thead th.sortable {
+        cursor: pointer;
+        user-select: none;
+        transition: color 0.15s;
+    }
+    thead th.sortable:hover {
+        color: var(--text);
+    }
+    thead th.sortable::after {
+        content: ' \2195';
+        font-size: 10px;
+        opacity: 0.5;
+    }
+
+    .empty-state {
+        color: var(--text-muted);
+        text-align: center;
+        padding: 32px;
+    }
+</style>
+
+<!-- Section 1: Header + Period Selector -->
+<div class="page-header">
+    <h1>Platform Analytics <span class="admin-badge">Admin</span></h1>
+    <div class="period-selector">
+        <a href="?days=7" class="{% if days == 7 %}active{% endif %}">7d</a>
+        <a href="?days=30" class="{% if days == 30 %}active{% endif %}">30d</a>
+        <a href="?days=90" class="{% if days == 90 %}active{% endif %}">90d</a>
+    </div>
+</div>
+
+<!-- Section 2: System Health Panel -->
+<div class="metrics-grid">
+    <div class="metric-tile">
+        <div class="metric-value {% if health.parse_failures_24h > 0 %}danger{% else %}ok{% endif %}">
+            {{ health.parse_failures_24h }}
+        </div>
+        <div class="metric-label">Parse Failures (24h)</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if health.schema_drift_alerts_24h > 0 %}danger{% else %}ok{% endif %}">
+            {{ health.schema_drift_alerts_24h }}
+        </div>
+        <div class="metric-label">Schema Drift Alerts</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if health.unmapped_count > 0 %}warn{% else %}ok{% endif %}">
+            {{ health.unmapped_count }}
+        </div>
+        <div class="metric-label">Unmapped Leads</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if health.pending_queue_depth > 20 %}danger{% elif health.pending_queue_depth > 5 %}warn{% else %}ok{% endif %}">
+            {{ health.pending_queue_depth }}
+        </div>
+        <div class="metric-label">Queue Depth</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if health.email_failures_24h > 0 %}danger{% else %}ok{% endif %}">
+            {{ health.email_failures_24h }}
+        </div>
+        <div class="metric-label">Email Failures (24h)</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value">
+            <span class="badge badge-{{ health.overall_health }}">{{ health.overall_health }}</span>
+        </div>
+        <div class="metric-label">Overall Health</div>
+    </div>
+</div>
+
+<!-- Section 3: Tenant Comparison Table -->
+<div class="card">
+    <h2>Tenant Performance</h2>
+    {% if comparison %}
+    <table id="tenantTable">
+        <thead>
+            <tr>
+                <th class="sortable" onclick="sortTable(0, 'str')">Tenant</th>
+                <th class="sortable" onclick="sortTable(1, 'num')">Leads</th>
+                <th class="sortable" onclick="sortTable(2, 'num')">Speed-to-Lead</th>
+                <th class="sortable" onclick="sortTable(3, 'num')">Delivery Rate</th>
+                <th class="sortable" onclick="sortTable(4, 'num')">Dup Rate</th>
+                <th class="sortable" onclick="sortTable(5, 'num')">Personalization</th>
+                <th class="sortable" onclick="sortTable(6, 'str')">Health</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in comparison %}
+            <tr>
+                <td data-value="{{ t.tenant_name }}">
+                    <span class="brand-dot" style="background-color: {{ t.brand_color }};"></span>
+                    <strong>{{ t.tenant_name }}</strong>
+                </td>
+                <td data-value="{{ t.lead_count }}">{{ t.lead_count }}</td>
+                <td data-value="{{ t.speed_to_lead if t.speed_to_lead is not none else -1 }}">
+                    {% if t.speed_to_lead is not none %}
+                        {{ "%.1f"|format(t.speed_to_lead) }}s
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td data-value="{{ t.delivery_rate if t.delivery_rate is not none else -1 }}">
+                    {% if t.delivery_rate is not none %}
+                        {{ "%.1f"|format(t.delivery_rate * 100) }}%
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td data-value="{{ t.duplicate_rate if t.duplicate_rate is not none else -1 }}">
+                    {% if t.duplicate_rate is not none %}
+                        {{ "%.1f"|format(t.duplicate_rate * 100) }}%
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td data-value="{{ t.personalization_rate if t.personalization_rate is not none else -1 }}">
+                    {% if t.personalization_rate is not none %}
+                        {{ "%.1f"|format(t.personalization_rate * 100) }}%
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td data-value="{{ t.health }}">
+                    <span class="badge badge-{{ t.health }}">{{ t.health }}</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No tenant data available.</p>
+    {% endif %}
+</div>
+
+<!-- Section 4: Personalization Performance (2-column) -->
+<div class="two-col">
+    <div class="card">
+        <h2>Generation Method</h2>
+        <canvas id="methodChart" height="220"></canvas>
+        {% if personalization.llm_success_rate is not none %}
+        <div class="chart-subtitle">LLM Success Rate: {{ "%.1f"|format(personalization.llm_success_rate * 100) }}%</div>
+        {% endif %}
+    </div>
+    <div class="card">
+        <h2>LLM Latency Distribution</h2>
+        <canvas id="latencyChart" height="220"></canvas>
+        {% if personalization.avg_llm_duration_ms is not none %}
+        <div class="chart-subtitle">Avg LLM Duration: {{ "%.0f"|format(personalization.avg_llm_duration_ms) }}ms</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Section 5: Platform-Wide Time Series -->
+<div class="card">
+    <h2>Lead Volume by Tenant</h2>
+    {% if timeseries.datasets %}
+    <canvas id="platformChart" height="100"></canvas>
+    {% else %}
+    <p class="empty-state">No lead data for this period.</p>
+    {% endif %}
+</div>
+
+<!-- Chart.js CDN (loaded here since base.html includes dark theme defaults) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+    /* Dark theme defaults for Chart.js */
+    Chart.defaults.color = '#8b8fa3';
+    Chart.defaults.borderColor = '#2a2e3b';
+    Chart.defaults.plugins.legend.labels.usePointStyle = true;
+
+    /* Table sorting */
+    function sortTable(colIdx, type) {
+        const tbody = document.querySelector('#tenantTable tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort((a, b) => {
+            let aVal = a.cells[colIdx].dataset.value || a.cells[colIdx].textContent;
+            let bVal = b.cells[colIdx].dataset.value || b.cells[colIdx].textContent;
+            if (type === 'num') { aVal = parseFloat(aVal) || 0; bVal = parseFloat(bVal) || 0; }
+            return bVal > aVal ? 1 : bVal < aVal ? -1 : 0;
+        });
+        rows.forEach(r => tbody.appendChild(r));
+    }
+
+    /* Personalization: Doughnut chart */
+    const methodCounts = {{ personalization.method_counts | tojson }};
+    new Chart(document.getElementById('methodChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['LLM', 'Jinja2', 'Fallback', 'Declined', 'Skipped'],
+            datasets: [{
+                data: [
+                    methodCounts.llm || 0,
+                    methodCounts.jinja2 || 0,
+                    methodCounts.jinja2_fallback || 0,
+                    {{ personalization.declined_count }},
+                    {{ personalization.skipped_count }}
+                ],
+                backgroundColor: ['#3b82f6', '#22c55e', '#eab308', '#ef4444', '#8b8fa3'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            },
+            cutout: '60%'
+        }
+    });
+
+    /* Latency: Bar chart (histogram) */
+    new Chart(document.getElementById('latencyChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ personalization.latency_labels | tojson }},
+            datasets: [{
+                label: 'Requests',
+                data: {{ personalization.latency_buckets | tojson }},
+                backgroundColor: '#a855f7',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    /* Platform time series: Stacked line chart */
+    {% if timeseries.datasets %}
+    const datasets = {{ timeseries.datasets | tojson }};
+    new Chart(document.getElementById('platformChart'), {
+        type: 'line',
+        data: {
+            labels: {{ timeseries.labels | tojson }},
+            datasets: datasets.map(ds => ({
+                label: ds.tenant_name,
+                data: ds.data,
+                borderColor: ds.brand_color,
+                backgroundColor: ds.brand_color + '33',
+                fill: true,
+                tension: 0.3,
+            }))
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { stacked: true, beginAtZero: true },
+                x: { stacked: true }
+            },
+            plugins: { legend: { position: 'bottom' } }
+        }
+    });
+    {% endif %}
+</script>
+
+{% endblock %}

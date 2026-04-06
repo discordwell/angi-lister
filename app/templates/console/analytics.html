@@ -1,0 +1,374 @@
+{% extends "console/base.html" %}
+{% block content %}
+
+{# ── 1. Header + Period Selector ────────────────────────────────── #}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+    <h1 style="margin-bottom:0;">Analytics</h1>
+    <div style="display:flex; gap:8px;">
+        <a href="?days=7" class="{% if days == 7 %}btn btn-sm{% else %}btn btn-sm btn-outline{% endif %}">7d</a>
+        <a href="?days=30" class="{% if days == 30 %}btn btn-sm{% else %}btn btn-sm btn-outline{% endif %}">30d</a>
+        <a href="?days=90" class="{% if days == 90 %}btn btn-sm{% else %}btn btn-sm btn-outline{% endif %}">90d</a>
+    </div>
+</div>
+
+{# ── 2. KPI Tiles Row ──────────────────────────────────────────── #}
+<div class="metrics-grid">
+    {# Conversion Rate #}
+    <div class="metric-tile">
+        <div class="metric-value {% if conversion.conversion_rate is not none and conversion.conversion_rate > 30 %}ok{% elif conversion.conversion_rate is not none and conversion.conversion_rate > 15 %}warn{% elif conversion.conversion_rate is not none %}danger{% endif %}">
+            {% if conversion.conversion_rate is not none %}
+                {{ "%.1f"|format(conversion.conversion_rate) }}%
+            {% else %}
+                N/A
+            {% endif %}
+        </div>
+        <div class="metric-label">Conversion Rate</div>
+    </div>
+
+    {# Speed to Lead #}
+    <div class="metric-tile">
+        <div class="metric-value {% if funnel.median_speed_to_lead_seconds is not none and funnel.median_speed_to_lead_seconds <= 60 %}ok{% elif funnel.median_speed_to_lead_seconds is not none and funnel.median_speed_to_lead_seconds <= 300 %}warn{% elif funnel.median_speed_to_lead_seconds is not none %}danger{% endif %}">
+            {% if funnel.median_speed_to_lead_seconds is not none %}
+                {{ "%.0f"|format(funnel.median_speed_to_lead_seconds) }}s
+            {% else %}
+                N/A
+            {% endif %}
+        </div>
+        <div class="metric-label">Speed to Lead</div>
+    </div>
+
+    {# Total Leads #}
+    <div class="metric-tile">
+        <div class="metric-value">{{ funnel.lead_created }}</div>
+        <div class="metric-label">Total Leads</div>
+    </div>
+
+    {# Duplicates Found #}
+    <div class="metric-tile">
+        <div class="metric-value {% if rebate.total > 0 %}warn{% endif %}">{{ rebate.total }}</div>
+        <div class="metric-label">Duplicates Found</div>
+    </div>
+</div>
+
+{# ── 3. Lead Volume Bar Chart ──────────────────────────────────── #}
+<div class="card">
+    <h2>Lead Volume</h2>
+    {% if volume %}
+        <canvas id="volumeChart" height="80"></canvas>
+    {% else %}
+        <p style="color:var(--text-muted); text-align:center; padding:32px;">No data for this period</p>
+    {% endif %}
+</div>
+
+{# ── 4. Conversion Funnel ──────────────────────────────────────── #}
+<div class="card">
+    <h2>Conversion Funnel</h2>
+    {% set max_count = funnel.lead_created or 1 %}
+
+    {# Hero metric: speed to lead #}
+    <div style="text-align:center; margin-bottom:20px;">
+        <span style="font-size:36px; font-weight:700; color:var(--green);">
+            {% if funnel.median_speed_to_lead_seconds is not none %}
+                {{ "%.1f"|format(funnel.median_speed_to_lead_seconds) }}s
+            {% else %}
+                N/A
+            {% endif %}
+        </span>
+        <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Median Speed to Lead</div>
+    </div>
+
+    {# Funnel bars #}
+    {% set stages = [
+        ("Leads Received", funnel.lead_created),
+        ("Email Queued", funnel.email_queued),
+        ("Email Sent", funnel.email_sent),
+        ("Booked", funnel.outcome_booked),
+        ("Won", funnel.outcome_won)
+    ] %}
+    {% for label, count in stages %}
+    <div style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;">
+            <span>{{ label }}</span>
+            <span style="color:var(--text-muted);">{{ count }}</span>
+        </div>
+        <div style="background:var(--bg); border-radius:4px; height:24px; overflow:hidden;">
+            <div style="width:{{ (count / max_count * 100)|round(1) }}%; height:100%; background:var(--accent); border-radius:4px; transition:width 0.3s;"></div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {# Declined / Skipped #}
+    <div style="margin-top:12px; font-size:12px; color:var(--text-muted);">
+        Declined: {{ funnel.email_declined }} &middot; Skipped: {{ funnel.email_skipped }}
+    </div>
+</div>
+
+{# ── 5. Geographic + Category ──────────────────────────────────── #}
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+    {# Leads by State #}
+    <div class="card" style="margin-bottom:0;">
+        <h2>Leads by State</h2>
+        {% if geo_cat.by_state %}
+            <div style="position:relative; height:300px;">
+                <canvas id="stateChart"></canvas>
+            </div>
+        {% else %}
+            <p style="color:var(--text-muted); text-align:center; padding:32px;">No state data</p>
+        {% endif %}
+    </div>
+
+    {# Leads by Category #}
+    <div class="card" style="margin-bottom:0;">
+        <h2>Leads by Category</h2>
+        {% if geo_cat.by_category %}
+            <div style="position:relative; height:300px;">
+                <canvas id="categoryChart"></canvas>
+            </div>
+        {% else %}
+            <p style="color:var(--text-muted); text-align:center; padding:32px;">No category data</p>
+        {% endif %}
+    </div>
+</div>
+
+{# Leads by Urgency (full width, smaller) #}
+<div class="card">
+    <h2>Leads by Urgency</h2>
+    {% if geo_cat.by_urgency %}
+        <div style="position:relative; height:220px; max-width:400px; margin:0 auto;">
+            <canvas id="urgencyChart"></canvas>
+        </div>
+    {% else %}
+        <p style="color:var(--text-muted); text-align:center; padding:32px;">No urgency data</p>
+    {% endif %}
+</div>
+
+{# ── 6. Duplicate Rebate Summary ───────────────────────────────── #}
+<div class="card">
+    <h2>Duplicate Lead Rebates</h2>
+
+    {# Mini KPI tiles #}
+    <div style="display:flex; gap:12px; margin-bottom:20px;">
+        <div class="metric-tile" style="flex:1;">
+            <div class="metric-value">{{ rebate.total }}</div>
+            <div class="metric-label">Total Duplicates</div>
+        </div>
+        <div class="metric-tile" style="flex:1;">
+            <div class="metric-value ok">{{ rebate.high_confidence }}</div>
+            <div class="metric-label">High Confidence</div>
+        </div>
+        <div class="metric-tile" style="flex:1;">
+            <div class="metric-value">
+                ${{ "%.2f"|format(rebate.estimated_rebate_value) }}
+            </div>
+            <div class="metric-label">Est. Rebate Value</div>
+        </div>
+    </div>
+
+    {# Score distribution histogram #}
+    {% if rebate.score_distribution %}
+        <h2 style="font-size:14px;">Score Distribution</h2>
+        <canvas id="scoreDistChart" height="60"></canvas>
+    {% endif %}
+
+    <div style="margin-top:16px;">
+        <a href="/console/analytics/duplicates-export" class="btn btn-sm">Export CSV for Rebate Claim</a>
+    </div>
+</div>
+
+{# ── 7. Conversion Tracking ───────────────────────────────────── #}
+<div class="card">
+    <h2>Lead Outcomes</h2>
+    {% if conversion.pipeline_total and conversion.pipeline_total > 0 %}
+        <div style="display:flex; align-items:center; gap:32px;">
+            <div style="position:relative; width:260px; height:260px; flex-shrink:0;">
+                <canvas id="outcomeChart"></canvas>
+            </div>
+            <div style="text-align:center; flex:1;">
+                <div style="font-size:48px; font-weight:700; color:var(--accent);">
+                    {% if conversion.conversion_rate is not none %}
+                        {{ "%.1f"|format(conversion.conversion_rate) }}%
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+                <div style="font-size:13px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">Conversion Rate</div>
+            </div>
+        </div>
+    {% else %}
+        <p style="color:var(--text-muted); text-align:center; padding:32px;">No outcomes recorded yet</p>
+    {% endif %}
+</div>
+
+{# ── Chart.js CDN + All chart scripts ─────────────────────────── #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+    /* Global dark-theme defaults for Chart.js */
+    Chart.defaults.color = '#8b8fa3';
+    Chart.defaults.borderColor = '#2a2e3b';
+    Chart.defaults.plugins.legend.display = false;
+
+    const doughnutColors = ['#3b82f6', '#22c55e', '#10b981', '#ef4444', '#eab308', '#f97316', '#a855f7', '#ec4899'];
+
+    /* ── 3. Lead Volume ─────────────────────────────── */
+    {% if volume %}
+    new Chart(document.getElementById('volumeChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ volume | map(attribute='day') | list | tojson }},
+            datasets: [{
+                data: {{ volume | map(attribute='count') | list | tojson }},
+                backgroundColor: 'rgba(59,130,246,0.6)',
+                borderColor: '#3b82f6',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#2a2e3b' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+    {% endif %}
+
+    /* ── 5a. Leads by State ─────────────────────────── */
+    {% if geo_cat.by_state %}
+    new Chart(document.getElementById('stateChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ geo_cat.by_state | map(attribute='label') | list | tojson }},
+            datasets: [{
+                data: {{ geo_cat.by_state | map(attribute='count') | list | tojson }},
+                backgroundColor: 'rgba(59,130,246,0.6)',
+                borderColor: '#3b82f6',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { beginAtZero: true, grid: { color: '#2a2e3b' } },
+                y: { grid: { display: false } }
+            }
+        }
+    });
+    {% endif %}
+
+    /* ── 5b. Leads by Category ──────────────────────── */
+    {% if geo_cat.by_category %}
+    new Chart(document.getElementById('categoryChart'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ geo_cat.by_category | map(attribute='label') | list | tojson }},
+            datasets: [{
+                data: {{ geo_cat.by_category | map(attribute='count') | list | tojson }},
+                backgroundColor: doughnutColors,
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'right',
+                    labels: { padding: 12, usePointStyle: true, pointStyleWidth: 8 }
+                }
+            }
+        }
+    });
+    {% endif %}
+
+    /* ── 5c. Leads by Urgency ───────────────────────── */
+    {% if geo_cat.by_urgency %}
+    new Chart(document.getElementById('urgencyChart'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ geo_cat.by_urgency | map(attribute='label') | list | tojson }},
+            datasets: [{
+                data: {{ geo_cat.by_urgency | map(attribute='count') | list | tojson }},
+                backgroundColor: doughnutColors,
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'right',
+                    labels: { padding: 12, usePointStyle: true, pointStyleWidth: 8 }
+                }
+            }
+        }
+    });
+    {% endif %}
+
+    /* ── 6. Score Distribution Histogram ─────────────── */
+    {% if rebate.score_distribution %}
+    new Chart(document.getElementById('scoreDistChart'), {
+        type: 'bar',
+        data: {
+            labels: ['0.0-0.1','0.1-0.2','0.2-0.3','0.3-0.4','0.4-0.5','0.5-0.6','0.6-0.7','0.7-0.8','0.8-0.9','0.9-1.0'],
+            datasets: [{
+                data: {{ rebate.score_distribution | tojson }},
+                backgroundColor: 'rgba(234,179,8,0.5)',
+                borderColor: '#eab308',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#2a2e3b' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+    {% endif %}
+
+    /* ── 7. Lead Outcomes Doughnut ───────────────────── */
+    {% if conversion.pipeline_total and conversion.pipeline_total > 0 %}
+    new Chart(document.getElementById('outcomeChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Mapped', 'Booked', 'Won', 'Lost'],
+            datasets: [{
+                data: [
+                    {{ conversion.mapped | tojson }},
+                    {{ conversion.booked | tojson }},
+                    {{ conversion.won | tojson }},
+                    {{ conversion.lost | tojson }}
+                ],
+                backgroundColor: ['#3b82f6', '#22c55e', '#10b981', '#ef4444'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '60%',
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: { padding: 16, usePointStyle: true, pointStyleWidth: 8 }
+                }
+            }
+        }
+    });
+    {% endif %}
+</script>
+
+{% endblock %}

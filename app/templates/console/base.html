@@ -175,6 +175,9 @@
         .badge-booked { background: rgba(34,197,94,0.15); color: var(--green); }
         .badge-won { background: rgba(16,185,129,0.2); color: #10b981; }
         .badge-lost { background: rgba(239,68,68,0.15); color: var(--red); }
+        .badge-good { background: rgba(34,197,94,0.15); color: var(--green); }
+        .badge-warn { background: rgba(234,179,8,0.15); color: var(--yellow); }
+        .badge-critical { background: rgba(239,68,68,0.15); color: var(--red); }
 
         /* Forms */
         .form-group { margin-bottom: 16px; }
@@ -324,6 +327,10 @@
             <a href="/console/" class="{% if page_title == 'Dashboard' %}active{% endif %}">Dashboard</a>
             <a href="/console/duplicates" class="{% if page_title == 'Duplicate Leads' %}active{% endif %}">Duplicates</a>
             <a href="/console/simulate" class="{% if page_title == 'Simulate Lead' %}active{% endif %}">Simulate</a>
+            <a href="/console/analytics" class="{% if page_title == 'Analytics' %}active{% endif %}">Analytics</a>
+            {% if session and not session.tenant_id %}
+            <a href="/console/analytics/admin" class="{% if page_title == 'Admin Analytics' %}active{% endif %}">Admin</a>
+            {% endif %}
         </div>
         <div style="margin-left:auto; display:flex; align-items:center; gap:12px;">
             {% if session and session.email %}
@@ -338,5 +345,8 @@
     <div class="container">
         {% block content %}{% endblock %}
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script>Chart.defaults.color='#8b8fa3';Chart.defaults.borderColor='#2a2e3b';</script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

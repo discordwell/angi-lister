@@ -421,3 +421,96 @@ async def console_events(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Analytics — client (tenant-scoped via RLS)
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics", response_class=HTMLResponse)
+def console_analytics(
+    request: Request,
+    days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_console_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    volume = get_lead_volume_timeseries(db, days=days)
+    funnel = get_conversion_funnel(db, days=days)
+    geo_cat = get_geo_category_breakdown(db, days=days)
+    rebate = get_duplicate_rebate_summary(db, days=days)
+    conversion = get_conversion_detail(db, days=days)
+
+    return templates.TemplateResponse(request, "console/analytics.html", {
+        "volume": volume,
+        "funnel": funnel,
+        "geo_cat": geo_cat,
+        "rebate": rebate,
+        "conversion": conversion,
+        "days": days,
+        "page_title": "Analytics",
+        "session": session,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Analytics — admin (cross-tenant, 403 if not admin)
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/admin", response_class=HTMLResponse)
+def console_analytics_admin(
+    request: Request,
+    days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_console_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    if session.tenant_id is not None:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    comparison = get_tenant_comparison(db, days=days)
+    health = get_system_health(db)
+    personalization = get_personalization_performance(db, days=days)
+    timeseries = get_platform_timeseries(db, days=days)
+
+    return templates.TemplateResponse(request, "console/analytics_admin.html", {
+        "comparison": comparison,
+        "health": health,
+        "personalization": personalization,
+        "timeseries": timeseries,
+        "days": days,
+        "page_title": "Admin Analytics",
+        "session": session,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Analytics — duplicate CSV export (tenant-scoped)
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/duplicates-export")
+def console_duplicates_export(
+    request: Request,
+    db: Session = Depends(get_console_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    rows = get_duplicate_pairs(db, limit=10000)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "lead_id", "original_lead_id", "lead_name", "original_name",
+        "lead_email", "score", "evidence_summary", "created_at",
+    ])
+    for r in rows:
+        evidence = r.get("evidence", {})
+        evidence_parts = [k for k, v in evidence.items() if v is True]
+        writer.writerow([
+            r["lead_id"], r["original_id"], r["lead_name"], r["original_name"],
+            r["lead_email"], r["score"], "; ".join(evidence_parts), r["created_at"],
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=duplicate_leads_rebate.csv"},
+    )
