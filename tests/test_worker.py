@@ -30,7 +30,7 @@ class TestPopulateOutbound:
         populate_outbound(seeded_db, msg)
 
         assert msg.body_html != "PLACEHOLDER"
-        assert "Apex HVAC" in msg.body_html
+        assert "Hoffmann Brothers" in msg.body_html
         assert lead.first_name in msg.body_html
 
     def test_already_rendered_not_overwritten(self, seeded_db):

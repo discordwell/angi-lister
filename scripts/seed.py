@@ -17,50 +17,52 @@ from app.models import Base, Tenant, AngiMapping
 
 DEMO_TENANTS = [
     {
-        "name": "Apex HVAC Indianapolis",
-        "slug": "apex-hvac",
-        "brand_color": "#2563eb",
-        "phone": "(317) 555-0101",
-        "email": "service@apexhvac.example.com",
-        "timezone": "America/New_York",
-        "email_from_name": "Apex HVAC",
+        "name": "Hoffmann Brothers",
+        "slug": "hoffmann-brothers",
+        "brand_color": "#1e3a5f",
+        "phone": "(314) 555-0101",
+        "email": "service@hoffmannbros.example.com",
+        "timezone": "America/Chicago",
+        "email_from_name": "Hoffmann Brothers",
         "intro_template": (
             "Hi {{ first_name }},\n\n"
-            "Thanks for reaching out about {{ category or 'your HVAC needs' }}! "
-            "Our certified technicians are ready to help. We pride ourselves on same-day "
-            "service and transparent pricing.\n\n"
-            "We'll be in touch shortly to confirm your availability and provide a detailed estimate."
+            "Thanks for reaching out about {{ category or 'your home service needs' }}! "
+            "Hoffmann Brothers has been serving the St. Louis area for over 40 years "
+            "with trusted HVAC, plumbing, and electrical services.\n\n"
+            "One of our certified technicians will be in touch shortly to confirm your "
+            "availability and provide a detailed estimate."
         ),
         "al_account_ids": ["100001"],
     },
     {
-        "name": "BlueWave Plumbing Co",
-        "slug": "bluewave-plumbing",
-        "brand_color": "#0d9488",
-        "phone": "(317) 555-0102",
-        "email": "hello@bluewaveplumbing.example.com",
-        "timezone": "America/New_York",
-        "email_from_name": "BlueWave Plumbing",
+        "name": "Paschal Air, Plumbing & Electric",
+        "slug": "paschal-air",
+        "brand_color": "#e63946",
+        "phone": "(479) 555-0102",
+        "email": "leads@paschalair.example.com",
+        "timezone": "America/Chicago",
+        "email_from_name": "Paschal Air",
         "intro_template": (
             "Hello {{ first_name }},\n\n"
-            "We got your request about {{ category or 'plumbing services' }}. "
-            "BlueWave has been serving Indianapolis for over 15 years and we'd love to help.\n\n"
-            "One of our licensed plumbers will reach out to schedule a convenient time for you."
+            "We received your request about {{ category or 'home services' }}. "
+            "Paschal Air, Plumbing & Electric has been Northwest Arkansas's go-to "
+            "service provider for decades.\n\n"
+            "A member of our team will reach out to schedule a convenient time for you."
         ),
         "al_account_ids": ["100002"],
     },
     {
-        "name": "Spark Electric Services",
-        "slug": "spark-electric",
-        "brand_color": "#d97706",
-        "phone": "(317) 555-0103",
-        "email": "info@sparkelectric.example.com",
-        "timezone": "America/New_York",
-        "email_from_name": "Spark Electric",
+        "name": "Heartland Home Services",
+        "slug": "heartland-home",
+        "brand_color": "#2d6a4f",
+        "phone": "(816) 555-0103",
+        "email": "info@heartlandhome.example.com",
+        "timezone": "America/Chicago",
+        "email_from_name": "Heartland Home Services",
         "intro_template": (
             "Hey {{ first_name }}!\n\n"
-            "Your {{ category or 'electrical service' }} request came through. "
-            "Spark Electric handles everything from panel upgrades to outlet installations.\n\n"
+            "Your {{ category or 'HVAC service' }} request came through. "
+            "Heartland Home Services keeps Midwest homes comfortable year-round.\n\n"
             "We'll follow up shortly to get you on the schedule."
         ),
         "al_account_ids": ["100003"],

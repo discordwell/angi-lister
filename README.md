@@ -42,9 +42,9 @@ Operations dashboard at `/console` (HTTP Basic Auth):
 
 | Tenant | ALAccountId | Category |
 |--------|-------------|----------|
-| Apex HVAC Indianapolis | 100001 | HVAC |
-| BlueWave Plumbing Co | 100002 | Plumbing |
-| Spark Electric Services | 100003 | Electrical |
+| Hoffmann Brothers | 100001 | HVAC / Plumbing / Electrical |
+| Paschal Air, Plumbing & Electric | 100002 | HVAC / Plumbing / Electrical |
+| Heartland Home Services | 100003 | HVAC |
 
 ## API
 

@@ -28,13 +28,13 @@ LAST_NAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Mille
 CATEGORIES = ["HVAC Repair", "Plumbing", "Electrical", "Water Heater", "AC Installation", "Drain Cleaning"]
 URGENCIES = ["Flexible", "Within 48 hours", "Today/Emergency", "Within a week"]
 CITIES = [
-    ("Indianapolis", "IN", "46201"),
-    ("Indianapolis", "IN", "46203"),
-    ("Indianapolis", "IN", "46220"),
-    ("Carmel", "IN", "46032"),
-    ("Fishers", "IN", "46037"),
+    ("St. Louis", "MO", "63101"),
+    ("St. Louis", "MO", "63110"),
+    ("Fayetteville", "AR", "72701"),
+    ("Springdale", "AR", "72764"),
+    ("Kansas City", "MO", "64101"),
 ]
-# These map to seeded tenants: Apex HVAC, BlueWave Plumbing, Spark Electric
+# These map to seeded tenants: Hoffmann Brothers, Paschal Air, Heartland Home
 ACCOUNT_IDS = ["100001", "100002", "100003"]
 
 

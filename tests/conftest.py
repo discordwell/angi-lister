@@ -67,14 +67,16 @@ def client(db):
 def seeded_db(db):
     """DB with demo tenants and mappings."""
     t1 = Tenant(
-        name="Apex HVAC Indianapolis", slug="apex-hvac",
-        brand_color="#2563eb", phone="(317) 555-0101",
-        email="service@apexhvac.example.com", email_from_name="Apex HVAC",
+        name="Hoffmann Brothers", slug="hoffmann-brothers",
+        brand_color="#1e3a5f", phone="(314) 555-0101",
+        email="service@hoffmannbros.example.com", email_from_name="Hoffmann Brothers",
+        timezone="America/Chicago",
     )
     t2 = Tenant(
-        name="BlueWave Plumbing Co", slug="bluewave-plumbing",
-        brand_color="#0d9488", phone="(317) 555-0102",
-        email="hello@bluewaveplumbing.example.com", email_from_name="BlueWave Plumbing",
+        name="Paschal Air, Plumbing & Electric", slug="paschal-air",
+        brand_color="#e63946", phone="(479) 555-0102",
+        email="leads@paschalair.example.com", email_from_name="Paschal Air",
+        timezone="America/Chicago",
     )
     db.add_all([t1, t2])
     db.flush()
@@ -106,14 +108,14 @@ SAMPLE_LEAD = {
     "PostalAddress": {
         "AddressFirstLine": "123 Main St",
         "AddressSecondLine": "",
-        "City": "Indianapolis",
-        "State": "IN",
-        "PostalCode": "46201",
+        "City": "St. Louis",
+        "State": "MO",
+        "PostalCode": "63101",
     },
     "Email": "jane.doe@example.com",
     "Source": "Angie's List Quote Request",
     "Description": "Need AC repair, unit not cooling.",
-    "Category": "Indianapolis - HVAC Repair",
+    "Category": "St. Louis - HVAC Repair",
     "Urgency": "This Week",
     "CorrelationId": "test-corr-001",
     "ALAccountId": "100001",
