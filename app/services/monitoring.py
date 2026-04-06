@@ -144,9 +144,10 @@ def send_alert(subject: str, body: str) -> bool:
         )
         if provider_id:
             log.info("Alert sent: %s (provider_id=%s)", subject, provider_id)
+            return True
         else:
             log.info("Alert skipped (Resend not configured): %s", subject)
-        return True
+            return False
     except Exception:
         log.exception("Failed to send alert: %s", subject)
         return False

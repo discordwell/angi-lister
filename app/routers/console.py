@@ -6,7 +6,10 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Request, HTTPException
+import csv
+import io
+
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -23,6 +26,17 @@ from app.services.metrics import (
     get_recent_leads,
     get_lead_detail,
     get_duplicate_pairs,
+)
+from app.services.analytics import (
+    get_lead_volume_timeseries,
+    get_conversion_funnel,
+    get_geo_category_breakdown,
+    get_duplicate_rebate_summary,
+    get_conversion_detail,
+    get_tenant_comparison,
+    get_system_health,
+    get_personalization_performance,
+    get_platform_timeseries,
 )
 
 log = logging.getLogger(__name__)
@@ -136,7 +150,7 @@ OUTCOME_VALID_FROM = {"mapped", "booked", "won", "lost"}
 async def console_set_outcome(
     request: Request,
     lead_id: str,
-    db: Session = Depends(get_bypass_db),
+    db: Session = Depends(get_console_db),
     session: ConsoleSession = Depends(_require_session),
 ):
     """Set the conversion outcome on a lead and redirect back to detail page."""
