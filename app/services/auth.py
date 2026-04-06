@@ -15,6 +15,12 @@ from app.models import MagicLinkToken, ConsoleSession, Tenant
 
 log = logging.getLogger(__name__)
 
+
+def _utcnow() -> dt.datetime:
+    """Return a naive UTC datetime (matches what PostgreSQL DateTime columns store)."""
+    return dt.datetime.now(dt.UTC).replace(tzinfo=None)
+
+
 COOKIE_NAME = "angi_session"
 TOKEN_PREFIX = "ml_"
 SESSION_PREFIX = "sess_"
@@ -39,7 +45,7 @@ def _verify_cookie(cookie_value: str) -> dict | None:
         if not hmac.compare_digest(sig, expected):
             return None
         payload = json.loads(base64.urlsafe_b64decode(raw))
-        if payload.get("exp", 0) < dt.datetime.now(dt.UTC).timestamp() * 1000:
+        if payload.get("exp", 0) < _utcnow().timestamp() * 1000:
             return None
         return payload
     except Exception:
@@ -57,7 +63,7 @@ def create_magic_link(db: Session, email: str) -> tuple[str, str | None]:
 
     raw_token = TOKEN_PREFIX + secrets.token_urlsafe(32)
     token_hash = _hash(raw_token)
-    expires_at = dt.datetime.now(dt.UTC) + dt.timedelta(minutes=settings.magic_link_ttl_minutes)
+    expires_at = _utcnow() + dt.timedelta(minutes=settings.magic_link_ttl_minutes)
 
     record = MagicLinkToken(
         email=email,
@@ -87,17 +93,17 @@ def consume_magic_link(db: Session, raw_token: str) -> ConsoleSession | None:
     if record.consumed_at is not None:
         log.warning("Magic link already consumed: %s", record.id)
         return None
-    if record.expires_at < dt.datetime.now(dt.UTC):
+    if record.expires_at < _utcnow():
         log.warning("Magic link expired: %s", record.id)
         return None
 
     # Mark as consumed
-    record.consumed_at = dt.datetime.now(dt.UTC)
+    record.consumed_at = _utcnow()
 
     # Create session
     raw_session = SESSION_PREFIX + secrets.token_urlsafe(32)
     session_hash = _hash(raw_session)
-    expires_at = dt.datetime.now(dt.UTC) + dt.timedelta(days=settings.session_ttl_days)
+    expires_at = _utcnow() + dt.timedelta(days=settings.session_ttl_days)
 
     session = ConsoleSession(
         tenant_id=record.tenant_id,
@@ -139,11 +145,11 @@ def validate_session(db: Session, cookie_value: str) -> ConsoleSession | None:
         return None
     if session.revoked_at is not None:
         return None
-    if session.expires_at < dt.datetime.now(dt.UTC):
+    if session.expires_at < _utcnow():
         return None
 
     # Touch last_seen
-    session.last_seen_at = dt.datetime.now(dt.UTC)
+    session.last_seen_at = _utcnow()
     db.commit()
 
     return session
@@ -162,7 +168,7 @@ def revoke_session(db: Session, cookie_value: str) -> bool:
         ConsoleSession.session_token_hash == token_hash
     ).first()
     if session:
-        session.revoked_at = dt.datetime.now(dt.UTC)
+        session.revoked_at = _utcnow()
         db.commit()
         return True
     return False
