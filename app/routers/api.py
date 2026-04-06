@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.db.session import get_bypass_db
 from app.models import AngiMapping, Lead, OutboundMessage, WebhookReceipt, LeadEvent
 from app.schemas.angi import AngiLeadPayload
 from app.schemas.api import MetricsSummary, LeadSummary, LeadDetail, DuplicatePair, WebhookResponse
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/v1")
 
 
 @router.get("/metrics", response_model=MetricsSummary)
-def api_metrics(db: Session = Depends(get_db)):
+def api_metrics(db: Session = Depends(get_bypass_db)):
     """Return current KPI metrics."""
     data = get_metrics_summary(db)
     return MetricsSummary(**data)
@@ -35,7 +35,7 @@ def api_metrics(db: Session = Depends(get_db)):
 @router.get("/leads", response_model=list[LeadSummary])
 def api_leads(
     limit: int = Query(50, ge=1, le=500),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_bypass_db),
 ):
     """Return recent leads (most recent first)."""
     rows = get_recent_leads(db, limit=limit)
@@ -43,7 +43,7 @@ def api_leads(
 
 
 @router.get("/leads/{lead_id}", response_model=LeadDetail)
-def api_lead_detail(lead_id: str, db: Session = Depends(get_db)):
+def api_lead_detail(lead_id: str, db: Session = Depends(get_bypass_db)):
     """Return full lead detail."""
     data = get_lead_detail(db, lead_id)
     if data is None:
@@ -77,7 +77,7 @@ def api_lead_detail(lead_id: str, db: Session = Depends(get_db)):
 @router.get("/duplicates", response_model=list[DuplicatePair])
 def api_duplicates(
     limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_bypass_db),
 ):
     """Return duplicate match pairs."""
     rows = get_duplicate_pairs(db, limit=limit)
@@ -85,7 +85,7 @@ def api_duplicates(
 
 
 @router.get("/duplicates/export")
-def api_duplicates_export(db: Session = Depends(get_db)):
+def api_duplicates_export(db: Session = Depends(get_bypass_db)):
     """Download CSV of duplicate matches for rebate claims."""
     rows = get_duplicate_pairs(db, limit=10000)
 
@@ -112,7 +112,7 @@ def api_duplicates_export(db: Session = Depends(get_db)):
 
 
 @router.post("/simulate", response_model=WebhookResponse)
-def api_simulate(payload: AngiLeadPayload, db: Session = Depends(get_db)):
+def api_simulate(payload: AngiLeadPayload, db: Session = Depends(get_bypass_db)):
     """Fire a test lead through the full pipeline with is_simulated=True."""
     receipt = WebhookReceipt(
         headers={"x-source": "api-simulation"},
@@ -135,7 +135,7 @@ def api_simulate(payload: AngiLeadPayload, db: Session = Depends(get_db)):
 
 
 @router.post("/tenants/{tenant_id}/replay-unmapped")
-def api_replay_unmapped(tenant_id: str, db: Session = Depends(get_db)):
+def api_replay_unmapped(tenant_id: str, db: Session = Depends(get_bypass_db)):
     """Replay unmapped leads after adding a tenant mapping.
 
     Finds leads with status='unmapped' whose ALAccountId now maps to
@@ -163,11 +163,13 @@ def api_replay_unmapped(tenant_id: str, db: Session = Depends(get_db)):
 
         db.add(LeadEvent(
             lead_id=lead.id,
+            tenant_id=tenant_id,
             event_type="replayed",
             payload={"tenant_id": tenant_id, "tenant_name": tenant.name},
         ))
         db.add(LeadEvent(
             lead_id=lead.id,
+            tenant_id=tenant_id,
             event_type="tenant_mapped",
             payload={"tenant_id": tenant_id, "tenant_name": tenant.name},
         ))
@@ -186,6 +188,7 @@ def api_replay_unmapped(tenant_id: str, db: Session = Depends(get_db)):
         db.add(msg)
         db.add(LeadEvent(
             lead_id=lead.id,
+            tenant_id=tenant_id,
             event_type="email_queued",
             payload={"outbound_message_id": msg.id},
         ))

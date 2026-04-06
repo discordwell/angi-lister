@@ -20,6 +20,9 @@ class LeadEvent(Base):
     )
     event_type: Mapped[str] = mapped_column(String, nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    tenant_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("tenants.id"), nullable=True, index=True
+    )
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: dt.datetime.now(dt.UTC)
     )

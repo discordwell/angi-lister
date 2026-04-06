@@ -21,7 +21,7 @@ services:
     environment:
       DATABASE_URL: postgresql://angi:angi@db:5432/angi_lister
     ports:
-      - "8000:8000"
+      - "8090:8000"
     depends_on:
       db:
         condition: service_healthy

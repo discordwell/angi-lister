@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.models import Base, Tenant, AngiMapping
-from app.db.session import get_db
+from app.db.session import get_db, get_bypass_db, get_admin_db
+from app.routers.console import get_console_db
 from app.main import create_app
 
 
@@ -58,6 +59,9 @@ def client(db):
         yield db
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_bypass_db] = override_get_db
+    app.dependency_overrides[get_admin_db] = override_get_db
+    app.dependency_overrides[get_console_db] = override_get_db
 
     with TestClient(app) as c:
         yield c
@@ -96,6 +100,9 @@ def seeded_client(seeded_db):
         yield seeded_db
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_bypass_db] = override_get_db
+    app.dependency_overrides[get_admin_db] = override_get_db
+    app.dependency_overrides[get_console_db] = override_get_db
 
     with TestClient(app) as c:
         yield c

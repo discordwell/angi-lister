@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.session import get_db, SessionLocal
+from app.db.session import get_bypass_db, SessionLocal, _set_tenant
 from app.templates_config import templates
 from app.models import ConsoleSession, WebhookReceipt, LeadEvent
 from app.schemas.angi import AngiLeadPayload
@@ -30,15 +30,57 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/console")
 
 
-def _require_session(request: Request, db: Session = Depends(get_db)) -> ConsoleSession:
-    """Verify the user has a valid session cookie, or redirect to login."""
+# ---------------------------------------------------------------------------
+# Auth helpers — validate once per request, cache on request.state
+# ---------------------------------------------------------------------------
+
+def _validate_and_cache(request: Request) -> ConsoleSession | None:
+    """Validate session once per request using a transient DB session."""
+    if hasattr(request.state, "_console_session"):
+        return request.state._console_session
+
     cookie = request.cookies.get(COOKIE_NAME)
     if not cookie:
-        raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
-    session = validate_session(db, cookie)
+        request.state._console_session = None
+        return None
+
+    # Use a separate transient session for auth validation so the main
+    # tenant-scoped session isn't affected by validate_session's commit.
+    auth_db = SessionLocal()
+    try:
+        _set_tenant(auth_db, "__bypass__")
+        session = validate_session(auth_db, cookie)
+    finally:
+        auth_db.close()
+
+    request.state._console_session = session
+    return session
+
+
+def _require_session(request: Request) -> ConsoleSession:
+    """Verify the user has a valid session cookie, or redirect to login."""
+    session = _validate_and_cache(request)
     if not session:
         raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
     return session
+
+
+def get_console_db(request: Request):
+    """Tenant-scoped DB for console routes.
+
+    - If session.tenant_id is set: scope to that tenant (RLS enforced)
+    - If session.tenant_id is None: admin mode (__all__)
+    """
+    session = _validate_and_cache(request)
+    db = SessionLocal()
+    try:
+        if session and session.tenant_id:
+            _set_tenant(db, session.tenant_id)
+        else:
+            _set_tenant(db, "__all__")
+        yield db
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +90,7 @@ def _require_session(request: Request, db: Session = Depends(get_db)) -> Console
 @router.get("/", response_class=HTMLResponse)
 def console_dashboard(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_console_db),
     session: ConsoleSession = Depends(_require_session),
 ):
     metrics = get_metrics_summary(db)
@@ -69,7 +111,7 @@ def console_dashboard(
 def console_lead_detail(
     request: Request,
     lead_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_console_db),
     session: ConsoleSession = Depends(_require_session),
 ):
     detail = get_lead_detail(db, lead_id)
@@ -89,7 +131,7 @@ def console_lead_detail(
 @router.get("/duplicates", response_class=HTMLResponse)
 def console_duplicates(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_console_db),
     session: ConsoleSession = Depends(_require_session),
 ):
     pairs = get_duplicate_pairs(db, limit=100)
@@ -121,10 +163,13 @@ def console_simulate_form(
 @router.post("/simulate", response_class=HTMLResponse)
 async def console_simulate_submit(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_bypass_db),
     session: ConsoleSession = Depends(_require_session),
 ):
-    """Process a simulated lead submission from the console form."""
+    """Process a simulated lead submission from the console form.
+
+    Uses bypass DB because ingestion inserts across multiple RLS-protected tables.
+    """
     form = await request.form()
 
     form_data = {
@@ -196,6 +241,7 @@ async def console_events(
     session: ConsoleSession = Depends(_require_session),
 ):
     """Server-Sent Events endpoint for real-time lead event updates."""
+    tenant_id = session.tenant_id
 
     async def event_generator():
         last_seen = dt.datetime.now(dt.UTC)
@@ -204,6 +250,11 @@ async def console_events(
                 break
             db = SessionLocal()
             try:
+                if tenant_id:
+                    _set_tenant(db, tenant_id)
+                else:
+                    _set_tenant(db, "__all__")
+
                 events = (
                     db.query(LeadEvent)
                     .filter(LeadEvent.created_at > last_seen)

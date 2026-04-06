@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.session import get_db
+from app.db.session import get_bypass_db
 from app.models import WebhookReceipt, LeadEvent
 from app.schemas.angi import AngiLeadPayload, EXPECTED_FIELDS, EXPECTED_ADDRESS_FIELDS
 from app.schemas.api import WebhookResponse
@@ -55,7 +55,7 @@ def _detect_drift(raw: dict) -> dict | None:
 @router.post("/webhooks/angi/leads", response_model=WebhookResponse)
 async def receive_angi_lead(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_bypass_db),
     x_api_key: str | None = Header(None),
 ):
     """Receive an Angi lead webhook.

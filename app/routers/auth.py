@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.session import get_db
+from app.db.session import get_bypass_db
 from app.models import Tenant
 from app.services.auth import (
     COOKIE_NAME,
@@ -28,7 +28,7 @@ DEMO_TENANT_SLUG = "paschal-air"
 
 
 @router.get("/login", response_class=HTMLResponse)
-def login_page(request: Request, db: Session = Depends(get_db)):
+def login_page(request: Request, db: Session = Depends(get_bypass_db)):
     """Render the login page."""
     # If already logged in, redirect to console
     cookie = request.cookies.get(COOKIE_NAME)
@@ -47,7 +47,7 @@ def login_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/send-link", response_class=HTMLResponse)
-async def send_magic_link(request: Request, db: Session = Depends(get_db)):
+async def send_magic_link(request: Request, db: Session = Depends(get_bypass_db)):
     """Send a magic link to the given email."""
     form = await request.form()
     email = form.get("email", "").strip().lower()
@@ -95,7 +95,7 @@ async def send_magic_link(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/demo-login")
-def demo_login(db: Session = Depends(get_db)):
+def demo_login(db: Session = Depends(get_bypass_db)):
     """Instant login as the demo tenant (Paschal Air)."""
     demo_tenant = db.query(Tenant).filter(Tenant.slug == DEMO_TENANT_SLUG).first()
     if not demo_tenant:
@@ -123,7 +123,7 @@ def demo_login(db: Session = Depends(get_db)):
 
 
 @router.get("/callback")
-def auth_callback(token: str, db: Session = Depends(get_db)):
+def auth_callback(token: str, db: Session = Depends(get_bypass_db)):
     """Consume a magic link token and create a session."""
     session = consume_magic_link(db, token)
 
@@ -144,7 +144,7 @@ def auth_callback(token: str, db: Session = Depends(get_db)):
 
 
 @router.get("/logout")
-def logout(request: Request, db: Session = Depends(get_db)):
+def logout(request: Request, db: Session = Depends(get_bypass_db)):
     """Revoke the session and clear the cookie."""
     cookie = request.cookies.get(COOKIE_NAME)
     if cookie:

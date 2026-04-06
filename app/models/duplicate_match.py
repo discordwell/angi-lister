@@ -14,6 +14,9 @@ class DuplicateMatch(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     lead_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id"), nullable=False)
     original_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id"), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(
+        String, ForeignKey("tenants.id"), nullable=False, index=True
+    )
     score: Mapped[float] = mapped_column(Float, nullable=False)
     evidence: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[dt.datetime] = mapped_column(

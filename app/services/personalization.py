@@ -295,6 +295,7 @@ def personalize_outbound(db: Session, msg: OutboundMessage) -> bool:
         msg.generation_method = "declined"
         db.add(LeadEvent(
             lead_id=lead.id,
+            tenant_id=tenant.id,
             event_type="email_declined",
             payload={"reason": decline_reason},
         ))
@@ -343,6 +344,7 @@ def personalize_outbound(db: Session, msg: OutboundMessage) -> bool:
         msg.generation_method = "skipped"
         db.add(LeadEvent(
             lead_id=lead.id,
+            tenant_id=tenant.id,
             event_type="email_skipped",
             payload={"reason": "LLM decided repeat customer — skip"},
         ))

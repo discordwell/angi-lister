@@ -76,6 +76,10 @@ def process_lead(
     db.add(lead)
     db.flush()  # get lead.id
 
+    # Update receipt with tenant_id now that we know it
+    if mapping:
+        receipt.tenant_id = mapping.tenant_id
+
     if not mapping:
         # Unmapped path — emit event, return early (no outbound message)
         db.add(LeadEvent(
@@ -93,12 +97,14 @@ def process_lead(
     db.add(LeadEvent(
         lead_id=lead.id,
         receipt_id=receipt.id,
+        tenant_id=tenant.id,
         event_type="lead_created",
         payload={"correlation_id": payload.CorrelationId},
     ))
     db.add(LeadEvent(
         lead_id=lead.id,
         receipt_id=receipt.id,
+        tenant_id=tenant.id,
         event_type="tenant_mapped",
         payload={"tenant_id": tenant.id, "tenant_name": tenant.name},
     ))
@@ -124,6 +130,7 @@ def process_lead(
     db.add(LeadEvent(
         lead_id=lead.id,
         receipt_id=receipt.id,
+        tenant_id=tenant.id,
         event_type="email_queued",
         payload={"outbound_message_id": msg.id, "is_simulated": is_simulated},
     ))

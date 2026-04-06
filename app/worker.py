@@ -19,7 +19,7 @@ import time
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, _set_tenant
 from app.models import OutboundMessage
 from app.services.email import process_outbound_message
 
@@ -105,6 +105,7 @@ def main() -> None:
 
     # Recover any messages left in 'generating' state from a previous crash
     db = SessionLocal()
+    _set_tenant(db, "__bypass__")
     try:
         recovered = _recover_stuck_messages(db)
         if recovered:
@@ -114,6 +115,7 @@ def main() -> None:
 
     while not _shutdown:
         db = SessionLocal()
+        _set_tenant(db, "__bypass__")
         try:
             processed = run_cycle(db)
             if processed:

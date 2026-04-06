@@ -223,6 +223,7 @@ def process_outbound_message(db: Session, msg: OutboundMessage) -> bool:
     if success:
         db.add(LeadEvent(
             lead_id=msg.lead_id,
+            tenant_id=msg.tenant_id,
             event_type="email_sent",
             payload={
                 "outbound_message_id": msg.id,
@@ -233,6 +234,7 @@ def process_outbound_message(db: Session, msg: OutboundMessage) -> bool:
     elif msg.status == "failed":
         db.add(LeadEvent(
             lead_id=msg.lead_id,
+            tenant_id=msg.tenant_id,
             event_type="email_failed",
             payload={
                 "outbound_message_id": msg.id,

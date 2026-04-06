@@ -17,6 +17,14 @@ Angi (HTTP POST)  ─→  Caddy (TLS)  ─→  FastAPI API  ─→  PostgreSQL
 
 ## Key Design Decisions
 
+### Row-Level Security (Multi-Tenant Isolation)
+PostgreSQL RLS enforces tenant data isolation at the database level. Every tenant-owned table has `FORCE ROW LEVEL SECURITY` and a `tenant_isolation` policy that checks `current_setting('app.current_tenant', true)`. Three access modes:
+- **`__bypass__`** — webhook handler, worker, migrations, seed (full access)
+- **`__all__`** — admin console (read all tenants)
+- **`{tenant_uuid}`** — tenant-scoped console (sees only own data)
+
+`SET LOCAL` is transaction-scoped, resetting automatically on commit/rollback.
+
 ### Return 200 Fast
 The webhook handler persists the raw receipt and acknowledges immediately. Email delivery happens asynchronously via a separate worker process. This prevents Angi's retry mechanism (3 retries at 15-min intervals) from creating duplicates.
 
@@ -39,13 +47,17 @@ Two levels:
 
 ## Data Model
 
-- **tenants** — Business identity, branding, email templates
-- **angi_account_mappings** — ALAccountId → tenant_id
-- **webhook_receipts** — Raw capture of every authenticated POST
-- **leads** — Normalized lead records with correlation_id uniqueness
-- **lead_events** — Append-only audit log
-- **outbound_messages** — Email outbox with delivery status
-- **duplicate_matches** — Pairs of suspected duplicate leads with evidence
+- **tenants** — Business identity, branding, email templates (no RLS — lookup table)
+- **angi_account_mappings** — ALAccountId → tenant_id (RLS)
+- **webhook_receipts** — Raw capture of every authenticated POST (RLS, nullable tenant_id)
+- **leads** — Normalized lead records with correlation_id uniqueness (RLS)
+- **lead_events** — Append-only audit log (RLS, nullable tenant_id)
+- **outbound_messages** — Email outbox with delivery status (RLS)
+- **duplicate_matches** — Pairs of suspected duplicate leads with evidence (RLS)
+- **tenant_home_bases** — Office locations with lat/lng for proximity scoring (RLS)
+- **tenant_job_rules** — Category whitelist/blacklist/wantlist rules (RLS)
+- **tenant_specials** — Promotional offers with conditions (RLS)
+- **geocode_cache** — Global postal code coordinate cache (no RLS)
 
 ## Stack
 

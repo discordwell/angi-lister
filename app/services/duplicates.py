@@ -85,6 +85,7 @@ def check_duplicates(db: Session, lead: Lead) -> DuplicateMatch | None:
     dup = DuplicateMatch(
         lead_id=lead.id,
         original_id=best_match.id,
+        tenant_id=lead.tenant_id,
         score=best_score,
         evidence=best_evidence,
     )
@@ -92,6 +93,7 @@ def check_duplicates(db: Session, lead: Lead) -> DuplicateMatch | None:
 
     event = LeadEvent(
         lead_id=lead.id,
+        tenant_id=lead.tenant_id,
         event_type="duplicate_detected",
         payload={
             "original_lead_id": best_match.id,

@@ -1,7 +1,7 @@
 import datetime as dt
 import uuid
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy import JSON as JSONB  # JSON works on both Postgres and SQLite
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,3 +22,6 @@ class WebhookReceipt(Base):
     correlation_id: Mapped[str | None] = mapped_column(String, nullable=True)
     response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     schema_drift: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    tenant_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("tenants.id"), nullable=True, index=True
+    )

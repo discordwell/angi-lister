@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.db.session import get_bypass_db
 from app.models import OutboundMessage
 from app.schemas.api import HealthResponse, ReadyResponse
 
@@ -17,7 +17,7 @@ def healthz():
 
 
 @router.get("/readyz", response_model=ReadyResponse)
-def readyz(db: Session = Depends(get_db)):
+def readyz(db: Session = Depends(get_bypass_db)):
     try:
         db.execute(text("SELECT 1"))
         db_status = "ok"
