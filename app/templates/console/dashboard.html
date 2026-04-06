@@ -66,9 +66,51 @@
     </div>
 </div>
 
-<!-- Recent leads table -->
+<!-- Daily breakdown -->
+{% if daily %}
 <div class="card">
-    <h2>Recent Leads</h2>
+    <h2>Daily Breakdown <span style="font-size:13px; font-weight:400; color:var(--text-muted);">(last 14 days)</span></h2>
+    <div style="display:flex; gap:4px; align-items:flex-end; height:120px; padding-top:8px;">
+        {% set max_total = daily|map(attribute='total')|max %}
+        {% for day in daily %}
+        <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">
+            <div style="width:100%; display:flex; flex-direction:column; justify-content:flex-end; height:90px;">
+                {% if day.total > 0 %}
+                {% set bar_height = (day.total / max_total * 80)|int if max_total > 0 else 0 %}
+                {% set live_h = (day.live / day.total * bar_height)|int if day.total > 0 else 0 %}
+                {% set dead_h = (day.dead / day.total * bar_height)|int if day.total > 0 else 0 %}
+                {% set other_h = bar_height - live_h - dead_h %}
+                <div title="{{ day.date }}: {{ day.total }} total, {{ day.live }} live, {{ day.dead }} dead" style="width:100%; display:flex; flex-direction:column; justify-content:flex-end; height:{{ bar_height }}px;">
+                    {% if other_h > 0 %}<div style="height:{{ other_h }}px; background:var(--accent); border-radius:3px 3px 0 0; min-height:2px;"></div>{% endif %}
+                    {% if live_h > 0 %}<div style="height:{{ live_h }}px; background:var(--green); min-height:2px;"></div>{% endif %}
+                    {% if dead_h > 0 %}<div style="height:{{ dead_h }}px; background:var(--red); border-radius:0 0 3px 3px; min-height:2px;"></div>{% endif %}
+                </div>
+                {% endif %}
+            </div>
+            <div style="font-size:10px; color:var(--text-muted); writing-mode:vertical-lr; transform:rotate(180deg); height:24px; overflow:hidden;">
+                {{ day.date[5:] }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <div style="display:flex; gap:16px; margin-top:8px; font-size:11px; color:var(--text-muted);">
+        <span><span style="display:inline-block; width:8px; height:8px; background:var(--accent); border-radius:2px; margin-right:4px;"></span>Pending</span>
+        <span><span style="display:inline-block; width:8px; height:8px; background:var(--green); border-radius:2px; margin-right:4px;"></span>Live</span>
+        <span><span style="display:inline-block; width:8px; height:8px; background:var(--red); border-radius:2px; margin-right:4px;"></span>Dead</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Leads table -->
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h2 style="margin-bottom:0;">Leads <span style="font-size:13px; font-weight:400; color:var(--text-muted);">({{ total_leads }})</span></h2>
+        <div style="display:flex; gap:4px;">
+            <a href="/console/?filter=all" class="btn btn-sm {% if filter == 'all' %}{% else %}btn-outline{% endif %}" style="padding:5px 12px; font-size:12px;">All</a>
+            <a href="/console/?filter=live" class="btn btn-sm {% if filter == 'live' %}btn-green{% else %}btn-outline{% endif %}" style="padding:5px 12px; font-size:12px;">Live</a>
+            <a href="/console/?filter=dead" class="btn btn-sm {% if filter == 'dead' %}btn-red{% else %}btn-outline{% endif %}" style="padding:5px 12px; font-size:12px;">Dead</a>
+        </div>
+    </div>
     {% if leads %}
     <table>
         <thead>
@@ -110,8 +152,30 @@
             {% endfor %}
         </tbody>
     </table>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div style="display:flex; justify-content:center; align-items:center; gap:8px; padding:16px 0 4px;">
+        {% if page > 1 %}
+        <a href="/console/?page={{ page - 1 }}&filter={{ filter }}" class="btn btn-sm btn-outline" style="padding:5px 14px; font-size:12px;">&larr; Prev</a>
+        {% endif %}
+        <span style="font-size:13px; color:var(--text-muted);">
+            Page {{ page }} of {{ total_pages }}
+        </span>
+        {% if page < total_pages %}
+        <a href="/console/?page={{ page + 1 }}&filter={{ filter }}" class="btn btn-sm btn-outline" style="padding:5px 14px; font-size:12px;">Next &rarr;</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
     {% else %}
-    <p style="color: var(--text-muted); text-align: center; padding: 32px;">No leads yet. <a href="/console/simulate">Simulate one</a> or send a webhook.</p>
+    <p style="color: var(--text-muted); text-align: center; padding: 32px;">
+        {% if filter != 'all' %}
+        No {{ filter }} leads found. <a href="/console/">Show all</a>
+        {% else %}
+        No leads yet. <a href="/console/simulate">Simulate one</a> or send a webhook.
+        {% endif %}
+    </p>
     {% endif %}
 </div>
 {% endblock %}

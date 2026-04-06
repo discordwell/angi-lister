@@ -131,13 +131,29 @@ def get_metrics_summary(db: Session, tenant_id: str | None = None) -> dict:
     }
 
 
-def get_recent_leads(db: Session, limit: int = 50, tenant_id: str | None = None) -> list[dict]:
-    """Return the most recent leads as dicts for the dashboard table."""
+def get_recent_leads(
+    db: Session,
+    limit: int = 30,
+    offset: int = 0,
+    tenant_id: str | None = None,
+    status_filter: str | None = None,
+) -> tuple[list[dict], int]:
+    """Return leads as dicts for the dashboard table with pagination.
+
+    Returns (leads_list, total_count).
+    """
 
     q = db.query(Lead)
     if tenant_id:
         q = q.filter(Lead.tenant_id == tenant_id)
-    leads = q.order_by(Lead.created_at.desc()).limit(limit).all()
+    if status_filter == "live":
+        q = q.filter(Lead.status.in_(["won", "booked"]))
+    elif status_filter == "dead":
+        q = q.filter(Lead.status == "lost")
+
+    total: int = q.count()
+
+    leads = q.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
     results = []
     for lead in leads:
         tenant_name = lead.tenant.name if lead.tenant else None
@@ -153,7 +169,44 @@ def get_recent_leads(db: Session, limit: int = 50, tenant_id: str | None = None)
             "status": lead.status,
             "created_at": lead.created_at,
         })
-    return results
+    return results, total
+
+
+def get_daily_breakdown(db: Session, days: int = 14, tenant_id: str | None = None) -> list[dict]:
+    """Return lead counts grouped by day for the last N days."""
+    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=days)
+
+    q = db.query(Lead).filter(Lead.created_at >= cutoff)
+    if tenant_id:
+        q = q.filter(Lead.tenant_id == tenant_id)
+
+    leads = q.all()
+
+    # Group by date (local = UTC for now; tenant timezone could be used later)
+    from collections import Counter
+    day_counts: Counter[str] = Counter()
+    day_live: Counter[str] = Counter()
+    day_dead: Counter[str] = Counter()
+
+    for lead in leads:
+        day_key = lead.created_at.strftime("%Y-%m-%d") if lead.created_at else "unknown"
+        day_counts[day_key] += 1
+        if lead.status in ("won", "booked"):
+            day_live[day_key] += 1
+        elif lead.status == "lost":
+            day_dead[day_key] += 1
+
+    # Build sorted list with all days in range (including zeros)
+    result = []
+    for i in range(days):
+        d = (dt.datetime.now(dt.UTC) - dt.timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        result.append({
+            "date": d,
+            "total": day_counts.get(d, 0),
+            "live": day_live.get(d, 0),
+            "dead": day_dead.get(d, 0),
+        })
+    return result
 
 
 def get_lead_detail(db: Session, lead_id: str, tenant_id: str | None = None) -> dict | None:

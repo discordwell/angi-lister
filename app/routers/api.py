@@ -69,7 +69,7 @@ def api_leads(
     db: Session = Depends(get_bypass_db),
 ):
     """Return recent leads (most recent first)."""
-    rows = get_recent_leads(db, limit=limit)
+    rows, _ = get_recent_leads(db, limit=limit)
     return [LeadSummary(**r) for r in rows]
 
 

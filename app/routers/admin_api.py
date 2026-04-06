@@ -148,5 +148,5 @@ def admin_leads(
     limit: int = Query(50, ge=1, le=500),
     ctx: AdminContext = Depends(require_admin),
 ):
-    rows = get_recent_leads(ctx.db, limit=limit)
+    rows, _ = get_recent_leads(ctx.db, limit=limit)
     return [LeadSummary(**r) for r in rows]

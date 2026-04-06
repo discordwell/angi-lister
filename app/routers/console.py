@@ -163,16 +163,33 @@ def _parse_period(period: str) -> tuple[dt.datetime | None, dt.datetime | None, 
 @router.get("/", response_class=HTMLResponse)
 def console_dashboard(
     request: Request,
+    page: int = Query(1, ge=1),
+    filter: str = Query("all"),
     db: Session = Depends(get_console_db),
     session: ConsoleSession = Depends(_require_session),
 ):
+    from app.services.metrics import get_daily_breakdown
+
+    per_page = 30
+    status_filter = filter if filter in ("live", "dead") else None
+    offset = (page - 1) * per_page
+
     metrics = get_metrics_summary(db)
-    leads = get_recent_leads(db, limit=50)
+    leads, total = get_recent_leads(db, limit=per_page, offset=offset, status_filter=status_filter)
+    daily = get_daily_breakdown(db, days=14)
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
     return templates.TemplateResponse(request, "console/dashboard.html", {
         "metrics": metrics,
         "leads": leads,
+        "daily": daily,
         "page_title": "Dashboard",
         "session": session,
+        "page": page,
+        "total_pages": total_pages,
+        "total_leads": total,
+        "filter": filter,
     })
 
 

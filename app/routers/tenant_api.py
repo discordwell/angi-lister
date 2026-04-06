@@ -46,7 +46,7 @@ def tenant_leads(
     limit: int = Query(50, ge=1, le=500),
     ctx: TenantContext = Depends(require_tenant),
 ):
-    rows = get_recent_leads(ctx.db, limit=limit, tenant_id=ctx.tenant.id)
+    rows, _ = get_recent_leads(ctx.db, limit=limit, tenant_id=ctx.tenant.id)
     return [LeadSummary(**r) for r in rows]
 
 
