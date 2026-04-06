@@ -93,8 +93,9 @@ def _check_job_rules(
     )
 
     # If whitelist rules exist, category must match at least one
+    # (wantlisted categories are implicitly whitelisted)
     whitelist_rules = [r for r in rules if r.rule_type == "whitelist"]
-    if whitelist_rules:
+    if whitelist_rules and not is_wantlisted:
         matched = any(r.category_pattern.lower() in category for r in whitelist_rules)
         if not matched:
             return (False, False, f"Not in whitelist (category: {lead.category})")

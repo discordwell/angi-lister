@@ -225,6 +225,22 @@ class TestJobRules:
         assert should_send is True
         assert is_wantlisted is True
 
+    def test_wantlisted_category_bypasses_whitelist(self, db, lead, tenant):
+        """A wantlisted category should be accepted even if it doesn't match any whitelist pattern."""
+        rules = [
+            TenantJobRule(tenant_id=tenant.id, category_pattern="HVAC", rule_type="whitelist"),
+            TenantJobRule(tenant_id=tenant.id, category_pattern="Plumbing", rule_type="whitelist"),
+            TenantJobRule(tenant_id=tenant.id, category_pattern="Water Heater", rule_type="wantlist"),
+        ]
+        db.add_all(rules)
+        db.flush()
+
+        lead.category = "St. Louis - Water Heater Repair"
+        db.flush()
+        should_send, is_wantlisted, reason = _check_job_rules(db, lead, tenant)
+        assert should_send is True
+        assert is_wantlisted is True
+
     def test_unlisted_category_declined_when_whitelist_exists(self, db, lead, tenant, job_rules):
         lead.category = "Indianapolis - Landscaping"
         db.flush()
