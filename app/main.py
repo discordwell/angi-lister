@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from app.routers import health, webhook, api, console
+from app.routers import auth, health, webhook, api, console
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("angi-lister")
@@ -26,6 +26,9 @@ def create_app() -> FastAPI:
 
     # Health routes (no auth)
     app.include_router(health.router, tags=["health"])
+
+    # Auth routes (magic link login)
+    app.include_router(auth.router, tags=["auth"])
 
     # Webhook endpoint (Angi lead ingestion)
     app.include_router(webhook.router, tags=["webhook"])

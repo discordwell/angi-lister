@@ -28,6 +28,31 @@ RESEND_API_URL = "https://api.resend.com/emails"
 MAX_ATTEMPTS = 3
 
 
+def send_email(recipient: str, subject: str, body_html: str, body_text: str,
+               sender: str | None = None) -> str | None:
+    """Send an email via Resend. Returns provider ID or None."""
+    if not settings.resend_api_key:
+        log.info("Resend not configured — skipping email to %s", recipient)
+        return None
+    resp = httpx.post(
+        RESEND_API_URL,
+        headers={
+            "Authorization": f"Bearer {settings.resend_api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": sender or settings.sender_email,
+            "to": [recipient],
+            "subject": subject,
+            "html": body_html,
+            "text": body_text,
+        },
+        timeout=15.0,
+    )
+    resp.raise_for_status()
+    return resp.json().get("id")
+
+
 # ---------------------------------------------------------------------------
 # Template rendering
 # ---------------------------------------------------------------------------
@@ -95,7 +120,7 @@ def populate_outbound(db: Session, msg: OutboundMessage) -> None:
 # Sending via Resend
 # ---------------------------------------------------------------------------
 
-def send_email(db: Session, msg: OutboundMessage) -> bool:
+def send_outbound_message(db: Session, msg: OutboundMessage) -> bool:
     """Attempt to send an outbound message via Resend.
 
     Returns True on success, False on failure.  Updates the message row
@@ -169,11 +194,30 @@ def process_outbound_message(db: Session, msg: OutboundMessage) -> bool:
     Creates a LeadEvent on success or final failure.
     Returns True if the message was sent successfully.
     """
-    # Step 1: Render template into body fields
-    populate_outbound(db, msg)
+    # Step 1: Personalize or render template into body fields
+    if msg.body_html == "PLACEHOLDER":
+        lead = msg.lead
+        tenant = lead.tenant if lead else None
+
+        if tenant and tenant.personalization_enabled:
+            try:
+                from app.services.personalization import personalize_outbound
+
+                should_send = personalize_outbound(db, msg)
+                if not should_send:
+                    return False
+            except Exception:
+                log.exception(
+                    "Personalization failed for msg %s — falling back to Jinja2", msg.id
+                )
+                msg.generation_method = "jinja2_fallback"
+                populate_outbound(db, msg)
+        else:
+            msg.generation_method = "jinja2"
+            populate_outbound(db, msg)
 
     # Step 2: Send
-    success = send_email(db, msg)
+    success = send_outbound_message(db, msg)
 
     # Step 3: Record event
     if success:

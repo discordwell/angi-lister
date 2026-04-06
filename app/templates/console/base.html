@@ -308,6 +308,12 @@
             <a href="/console/duplicates" class="{% if page_title == 'Duplicate Leads' %}active{% endif %}">Duplicates</a>
             <a href="/console/simulate" class="{% if page_title == 'Simulate Lead' %}active{% endif %}">Simulate</a>
         </div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:12px;">
+            {% if session and session.email %}
+            <span style="font-size:13px; color:var(--text-muted);">{{ session.email }}</span>
+            {% endif %}
+            <a href="/auth/logout" style="font-size:13px; color:var(--text-muted); padding:6px 12px; border:1px solid var(--border); border-radius:var(--radius);">Sign out</a>
+        </div>
     </nav>
     <div class="container">
         {% block content %}{% endblock %}

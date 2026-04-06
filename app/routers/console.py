@@ -1,23 +1,22 @@
-"""Console UI routes — server-rendered HTML pages with HTTP Basic auth."""
+"""Console UI routes — server-rendered HTML pages with session auth."""
 
 import asyncio
 import datetime as dt
 import json
 import logging
-import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import get_db, SessionLocal
 from app.templates_config import templates
-from app.models import WebhookReceipt, LeadEvent
+from app.models import ConsoleSession, WebhookReceipt, LeadEvent
 from app.schemas.angi import AngiLeadPayload
+from app.services.auth import COOKIE_NAME, validate_session
 from app.services.ingestion import process_lead
 from app.services.metrics import (
     get_metrics_summary,
@@ -29,20 +28,17 @@ from app.services.metrics import (
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/console")
-security = HTTPBasic()
 
 
-def _verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    """Verify HTTP Basic credentials against settings."""
-    correct_user = secrets.compare_digest(credentials.username, settings.console_user)
-    correct_pass = secrets.compare_digest(credentials.password, settings.console_password)
-    if not (correct_user and correct_pass):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials
+def _require_session(request: Request, db: Session = Depends(get_db)) -> ConsoleSession:
+    """Verify the user has a valid session cookie, or redirect to login."""
+    cookie = request.cookies.get(COOKIE_NAME)
+    if not cookie:
+        raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
+    session = validate_session(db, cookie)
+    if not session:
+        raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
+    return session
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +49,7 @@ def _verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 def console_dashboard(
     request: Request,
     db: Session = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(_verify_credentials),
+    session: ConsoleSession = Depends(_require_session),
 ):
     metrics = get_metrics_summary(db)
     leads = get_recent_leads(db, limit=50)
@@ -61,6 +57,7 @@ def console_dashboard(
         "metrics": metrics,
         "leads": leads,
         "page_title": "Dashboard",
+        "session": session,
     })
 
 
@@ -73,7 +70,7 @@ def console_lead_detail(
     request: Request,
     lead_id: str,
     db: Session = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(_verify_credentials),
+    session: ConsoleSession = Depends(_require_session),
 ):
     detail = get_lead_detail(db, lead_id)
     if not detail:
@@ -81,6 +78,7 @@ def console_lead_detail(
     return templates.TemplateResponse(request, "console/lead_detail.html", {
         "lead": detail,
         "page_title": f"Lead: {detail['first_name']} {detail['last_name']}",
+        "session": session,
     })
 
 
@@ -92,12 +90,13 @@ def console_lead_detail(
 def console_duplicates(
     request: Request,
     db: Session = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(_verify_credentials),
+    session: ConsoleSession = Depends(_require_session),
 ):
     pairs = get_duplicate_pairs(db, limit=100)
     return templates.TemplateResponse(request, "console/duplicates.html", {
         "pairs": pairs,
         "page_title": "Duplicate Leads",
+        "session": session,
     })
 
 
@@ -108,13 +107,14 @@ def console_duplicates(
 @router.get("/simulate", response_class=HTMLResponse)
 def console_simulate_form(
     request: Request,
-    credentials: HTTPBasicCredentials = Depends(_verify_credentials),
+    session: ConsoleSession = Depends(_require_session),
 ):
     return templates.TemplateResponse(request, "console/simulate.html", {
         "page_title": "Simulate Lead",
         "result": None,
         "error": None,
         "form_data": None,
+        "session": session,
     })
 
 
@@ -122,7 +122,7 @@ def console_simulate_form(
 async def console_simulate_submit(
     request: Request,
     db: Session = Depends(get_db),
-    credentials: HTTPBasicCredentials = Depends(_verify_credentials),
+    session: ConsoleSession = Depends(_require_session),
 ):
     """Process a simulated lead submission from the console form."""
     form = await request.form()
@@ -155,6 +155,7 @@ async def console_simulate_submit(
             "result": None,
             "error": f"Validation error: {exc.error_count()} issue(s). {exc.errors()}",
             "form_data": form_data,
+            "session": session,
         })
 
     # Create a synthetic webhook receipt
@@ -181,6 +182,7 @@ async def console_simulate_submit(
         },
         "error": None,
         "form_data": form_data,
+        "session": session,
     })
 
 
@@ -191,7 +193,7 @@ async def console_simulate_submit(
 @router.get("/events")
 async def console_events(
     request: Request,
-    credentials: HTTPBasicCredentials = Depends(_verify_credentials),
+    session: ConsoleSession = Depends(_require_session),
 ):
     """Server-Sent Events endpoint for real-time lead event updates."""
 

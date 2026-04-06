@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import SessionLocal
-from app.models import Base, Tenant, AngiMapping
+from app.models import Base, Tenant, AngiMapping, TenantHomeBase, TenantJobRule, TenantSpecial
 
 
 DEMO_TENANTS = [
@@ -109,9 +109,79 @@ def seed(reset: bool = False) -> None:
             t_data["al_account_ids"] = al_account_ids  # restore
 
         db.commit()
+
+        # --- Personalization config for Hoffmann Brothers -------------------------
+        hoffmann = db.query(Tenant).filter(Tenant.slug == "hoffmann-brothers").first()
+        if hoffmann and not db.query(TenantHomeBase).filter(TenantHomeBase.tenant_id == hoffmann.id).first():
+            hoffmann.personalization_enabled = True
+            hoffmann.sample_email = (
+                "We got your request and we're excited to help! Hoffmann Brothers has been "
+                "keeping St. Louis homes comfortable since 1978. Whether it's a quick fix or "
+                "a full replacement, our certified techs have you covered.\n\n"
+                "Let's get something on the calendar — reply to this email or give us a call."
+            )
+            hoffmann.pricing_tiers = [
+                {"max_mi": 1, "text": "$39 diagnostic"},
+                {"max_mi": 5, "text": "$59 diagnostic"},
+                {"max_mi": 15, "text": "$79 diagnostic"},
+            ]
+
+            # Home bases
+            db.add(TenantHomeBase(
+                tenant_id=hoffmann.id, name="Main Office",
+                address="2950 Sublette Ave, St. Louis, MO 63139",
+                lat=38.6059, lng=-90.2858,
+            ))
+            db.add(TenantHomeBase(
+                tenant_id=hoffmann.id, name="Chesterfield Branch",
+                address="16090 Swingley Ridge Rd, Chesterfield, MO 63017",
+                lat=38.6555, lng=-90.5638,
+            ))
+
+            # Job rules
+            db.add(TenantJobRule(
+                tenant_id=hoffmann.id, category_pattern="HVAC", rule_type="whitelist",
+            ))
+            db.add(TenantJobRule(
+                tenant_id=hoffmann.id, category_pattern="Heating", rule_type="whitelist",
+            ))
+            db.add(TenantJobRule(
+                tenant_id=hoffmann.id, category_pattern="Plumbing", rule_type="whitelist",
+            ))
+            db.add(TenantJobRule(
+                tenant_id=hoffmann.id, category_pattern="Water Heater", rule_type="wantlist",
+            ))
+            db.add(TenantJobRule(
+                tenant_id=hoffmann.id, category_pattern="Roofing", rule_type="blacklist",
+            ))
+
+            # Specials
+            db.add(TenantSpecial(
+                tenant_id=hoffmann.id,
+                name="Water Heater Replacement Discount",
+                description="$100 off any water heater replacement installation",
+                discount_text="$100 off install",
+                conditions={"category_contains": "Water Heater"},
+            ))
+            db.add(TenantSpecial(
+                tenant_id=hoffmann.id,
+                name="Spring AC Tune-Up",
+                description="$49 AC tune-up special for the spring season",
+                discount_text="$49 tune-up",
+                conditions={
+                    "category_contains": "AC",
+                    "valid_after": "2026-03-01",
+                    "valid_before": "2026-06-30",
+                },
+            ))
+
+            db.commit()
+            print("  Added personalization config for Hoffmann Brothers")
+
         total = db.query(Tenant).count()
         mappings = db.query(AngiMapping).count()
-        print(f"\nDone. {total} tenants, {mappings} account mappings.")
+        home_bases = db.query(TenantHomeBase).count()
+        print(f"\nDone. {total} tenants, {mappings} account mappings, {home_bases} home bases.")
     finally:
         db.close()
 

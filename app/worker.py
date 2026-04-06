@@ -70,6 +70,27 @@ def run_cycle(db: Session) -> int:
     return processed
 
 
+def _recover_stuck_messages(db: Session) -> int:
+    """Reset messages stuck in 'generating' for more than 60s back to 'pending'."""
+    import datetime as dt
+
+    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=60)
+    stuck = (
+        db.query(OutboundMessage)
+        .filter(
+            OutboundMessage.status == "generating",
+            OutboundMessage.queued_at < cutoff,
+        )
+        .all()
+    )
+    for msg in stuck:
+        msg.status = "pending"
+        log.warning("Recovered stuck message %s from 'generating' back to 'pending'", msg.id)
+    if stuck:
+        db.commit()
+    return len(stuck)
+
+
 def main() -> None:
     """Entry point — poll loop."""
     signal.signal(signal.SIGINT, _handle_signal)
@@ -81,6 +102,15 @@ def main() -> None:
         poll_interval,
         bool(settings.resend_api_key),
     )
+
+    # Recover any messages left in 'generating' state from a previous crash
+    db = SessionLocal()
+    try:
+        recovered = _recover_stuck_messages(db)
+        if recovered:
+            log.info("Recovered %d stuck message(s) on startup", recovered)
+    finally:
+        db.close()
 
     while not _shutdown:
         db = SessionLocal()

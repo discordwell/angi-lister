@@ -1,7 +1,7 @@
 import datetime as dt
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy import JSON as JSONB  # JSON works on both Postgres and SQLite
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +37,9 @@ class Lead(Base):
     urgency: Mapped[str | None] = mapped_column(String, nullable=True)
     raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     fingerprint: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    geocode_source: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime, default=lambda: dt.datetime.now(dt.UTC)
