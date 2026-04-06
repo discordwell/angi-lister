@@ -5,11 +5,11 @@ import io
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_bypass_db
-from app.models import AngiMapping, Lead, OutboundMessage, WebhookReceipt, LeadEvent
+from app.models import AngiMapping, Lead, OutboundMessage, WebhookReceipt, LeadEvent, TenantFile
 from app.schemas.angi import AngiLeadPayload
 from app.schemas.api import MetricsSummary, LeadSummary, LeadDetail, DuplicatePair, WebhookResponse, OutcomeRequest
 from app.services.ingestion import process_lead
@@ -38,6 +38,22 @@ def api_docs_page(request: Request):
     env = Environment(loader=FileSystemLoader(str(tpl_dir)), autoescape=True)
     html = env.get_template("api_docs.html").render(base_url=settings.app_url)
     return HTMLResponse(content=html)
+
+
+@router.get("/files/{file_id}", include_in_schema=False)
+def serve_file(file_id: str, db: Session = Depends(get_bypass_db)):
+    """Serve a tenant file by ID. Public (no auth) so email clients can fetch images."""
+    f = db.query(TenantFile).filter(TenantFile.id == file_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="File not found")
+    return Response(
+        content=f.data,
+        media_type=f.content_type,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Content-Disposition": f'inline; filename="{f.filename}"',
+        },
+    )
 
 
 @router.get("/metrics", response_model=MetricsSummary)

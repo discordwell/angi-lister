@@ -15,7 +15,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Lead, LeadEvent, OutboundMessage, Tenant, TenantJobRule, TenantSpecial
+from app.models import Lead, LeadEvent, OutboundMessage, Tenant, TenantJobRule, TenantSpecial, TenantFile
 from app.models.tenant_home_base import TenantHomeBase
 from app.services.email import populate_outbound
 from app.services.geo_utils import haversine_miles
@@ -367,6 +367,16 @@ def personalize_outbound(db: Session, msg: OutboundMessage) -> bool:
     # HTML version
     body_html_content = body_text.replace("\n\n", "</p><p>").replace("\n", "<br>")
     brand = tenant.brand_color or "#2563eb"
+
+    # Check for signature image
+    signature = db.query(TenantFile).filter(
+        TenantFile.tenant_id == tenant.id, TenantFile.purpose == "signature"
+    ).first()
+    sig_html = ""
+    if signature:
+        sig_url = f"{settings.app_url}/api/v1/files/{signature.id}"
+        sig_html = f'<div style="margin-top:16px;"><img src="{sig_url}" alt="Signature" style="max-width:100%;"></div>'
+
     msg.body_html = f"""<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
 <div style="background:{brand};color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
 <h2 style="margin:0;">{tenant.name}</h2>
@@ -376,6 +386,7 @@ def personalize_outbound(db: Session, msg: OutboundMessage) -> bool:
 <p>{body_html_content}</p>
 <p>Warm regards,<br>The {tenant.name} Team</p>
 {"<p><a href='tel:" + tenant.phone + "' style='color:" + brand + ";'>" + tenant.phone + "</a></p>" if tenant.phone else ""}
+{sig_html}
 </div>
 </div>"""
     msg.body_text = full_text

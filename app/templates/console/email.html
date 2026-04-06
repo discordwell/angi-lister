@@ -80,7 +80,45 @@
     </form>
 </div>
 
-<!-- ── Section 3: Service Locations ──────────────────────────────────── -->
+<!-- ── Section 3: Email Signature / Footer ───────────────────────────── -->
+<div class="card">
+    <h2>Email Signature</h2>
+    <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+        Upload an image for your email footer — a signature block, logo, or branded banner. Appears at the bottom of every outreach email.
+    </p>
+
+    {% if signature %}
+    <div style="margin-bottom:16px; padding:16px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius);">
+        <img src="/api/v1/files/{{ signature.id }}" alt="Email signature"
+             style="max-width:100%; max-height:200px; border-radius:4px;">
+        <div style="margin-top:8px; display:flex; align-items:center; gap:12px;">
+            <span style="font-size:12px; color:var(--text-muted);">
+                {{ signature.filename }} ({{ (signature.size_bytes / 1024)|round(1) }} KB)
+            </span>
+            <form method="POST" action="/console/email/signature/delete" style="margin:0;">
+                <button type="submit" class="btn btn-sm btn-red" onclick="return confirm('Remove signature?')">Remove</button>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <p style="color:var(--text-muted); font-size:14px; margin-bottom:12px;">No signature uploaded.</p>
+    {% endif %}
+
+    <form method="POST" action="/console/email/signature" enctype="multipart/form-data"
+          style="{% if signature %}border-top:1px solid var(--border); padding-top:16px;{% endif %}">
+        <div class="form-group">
+            <label>{{ 'Replace' if signature else 'Upload' }} Signature Image</label>
+            <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                   style="padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); width:100%;">
+            <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">
+                PNG, JPEG, GIF, WebP, or SVG. Max 2 MB.
+            </p>
+        </div>
+        <button type="submit" class="btn btn-sm">Upload</button>
+    </form>
+</div>
+
+<!-- ── Section 4: Service Locations ──────────────────────────────────── -->
 <div class="card">
     <h2>Service Locations</h2>
     <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">

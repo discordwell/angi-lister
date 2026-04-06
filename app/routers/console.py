@@ -19,7 +19,7 @@ from app.db.session import get_bypass_db, SessionLocal, set_tenant
 from app.templates_config import templates
 from app.models import (
     ConsoleSession, Lead, Tenant, WebhookReceipt, LeadEvent,
-    TenantHomeBase, TenantJobRule, TenantSpecial,
+    TenantHomeBase, TenantJobRule, TenantSpecial, TenantFile,
 )
 from app.schemas.angi import AngiLeadPayload
 from app.services.auth import COOKIE_NAME, validate_session
@@ -381,6 +381,9 @@ def _email_context(db: Session, tenant: Tenant, session, success=None, error=Non
     home_bases = db.query(TenantHomeBase).filter(TenantHomeBase.tenant_id == tenant.id).all()
     job_rules = db.query(TenantJobRule).filter(TenantJobRule.tenant_id == tenant.id).all()
     specials = db.query(TenantSpecial).filter(TenantSpecial.tenant_id == tenant.id).all()
+    signature = db.query(TenantFile).filter(
+        TenantFile.tenant_id == tenant.id, TenantFile.purpose == "signature"
+    ).first()
     return {
         "page_title": "Email Setup",
         "session": session,
@@ -389,6 +392,7 @@ def _email_context(db: Session, tenant: Tenant, session, success=None, error=Non
         "job_rules": job_rules,
         "specials": specials,
         "pricing_tiers": tenant.pricing_tiers or [],
+        "signature": signature,
         "success": success,
         "error": error,
     }
@@ -603,6 +607,71 @@ def console_delete_special(
     ).first()
     if sp:
         db.delete(sp)
+        db.commit()
+    return RedirectResponse(url="/console/email", status_code=302)
+
+
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024  # 2 MB
+ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"}
+
+
+@router.post("/email/signature", response_class=HTMLResponse)
+async def console_upload_signature(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    sess, tenant = _require_tenant_session(request, db)
+    form = await request.form()
+    upload = form.get("file")
+
+    if not upload or not hasattr(upload, "read"):
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, error="Please select a file to upload."))
+
+    content_type = upload.content_type or ""
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, error=f"Unsupported file type: {content_type}. Use PNG, JPEG, GIF, WebP, or SVG."))
+
+    data = await upload.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        return templates.TemplateResponse(request, "console/email.html",
+            _email_context(db, tenant, session, error="File too large. Maximum 2 MB."))
+
+    # Replace any existing signature
+    existing = db.query(TenantFile).filter(
+        TenantFile.tenant_id == tenant.id, TenantFile.purpose == "signature"
+    ).first()
+    if existing:
+        db.delete(existing)
+
+    db.add(TenantFile(
+        tenant_id=tenant.id,
+        filename=upload.filename or "signature",
+        content_type=content_type,
+        size_bytes=len(data),
+        data=data,
+        purpose="signature",
+    ))
+    db.commit()
+
+    return templates.TemplateResponse(request, "console/email.html",
+        _email_context(db, tenant, session, success="Signature uploaded."))
+
+
+@router.post("/email/signature/delete", response_class=HTMLResponse)
+def console_delete_signature(
+    request: Request,
+    db: Session = Depends(get_bypass_db),
+    session: ConsoleSession = Depends(_require_session),
+):
+    sess, tenant = _require_tenant_session(request, db)
+    existing = db.query(TenantFile).filter(
+        TenantFile.tenant_id == tenant.id, TenantFile.purpose == "signature"
+    ).first()
+    if existing:
+        db.delete(existing)
         db.commit()
     return RedirectResponse(url="/console/email", status_code=302)
 

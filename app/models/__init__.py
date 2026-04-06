@@ -12,6 +12,7 @@ from app.models.tenant_special import TenantSpecial
 from app.models.geocode_cache import GeocodeCache
 from app.models.auth import MagicLinkToken, ConsoleSession
 from app.models.api_key import ApiKey
+from app.models.tenant_file import TenantFile
 
 __all__ = [
     "Base",
@@ -29,4 +30,5 @@ __all__ = [
     "MagicLinkToken",
     "ConsoleSession",
     "ApiKey",
+    "TenantFile",
 ]
