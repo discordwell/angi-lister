@@ -233,12 +233,22 @@ def get_lead_detail(db: Session, lead_id: str, tenant_id: str | None = None) -> 
     }
 
 
-def get_duplicate_pairs(db: Session, limit: int = 100, tenant_id: str | None = None) -> list[dict]:
-    """Return duplicate match pairs for the duplicates view."""
+def get_duplicate_pairs(
+    db: Session,
+    limit: int = 100,
+    tenant_id: str | None = None,
+    date_from: dt.datetime | None = None,
+    date_to: dt.datetime | None = None,
+) -> list[dict]:
+    """Return duplicate match pairs, optionally filtered by date range."""
 
     q = db.query(DuplicateMatch)
     if tenant_id:
         q = q.filter(DuplicateMatch.tenant_id == tenant_id)
+    if date_from:
+        q = q.filter(DuplicateMatch.created_at >= date_from)
+    if date_to:
+        q = q.filter(DuplicateMatch.created_at < date_to)
     matches = q.order_by(DuplicateMatch.created_at.desc()).limit(limit).all()
     results = []
     for m in matches:

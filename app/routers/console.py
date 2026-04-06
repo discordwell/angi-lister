@@ -113,6 +113,50 @@ def get_console_db(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Period parsing helper
+# ---------------------------------------------------------------------------
+
+def _parse_period(period: str) -> tuple[dt.datetime | None, dt.datetime | None, str]:
+    """Parse a period string into (date_from, date_to, label).
+
+    Supported: "all", "today", "7d", "30d", "YYYY-MM-DD" (specific day), "YYYY-MM" (specific month).
+    """
+    now = dt.datetime.now(dt.UTC).replace(tzinfo=None)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period == "all":
+        return None, None, "All Time"
+    if period == "today":
+        return today, today + dt.timedelta(days=1), "Today"
+    if period == "7d":
+        return now - dt.timedelta(days=7), None, "Last 7 Days"
+    if period == "30d":
+        return now - dt.timedelta(days=30), None, "Last 30 Days"
+
+    # Specific day: YYYY-MM-DD
+    if len(period) == 10:
+        try:
+            day = dt.datetime.strptime(period, "%Y-%m-%d")
+            return day, day + dt.timedelta(days=1), period
+        except ValueError:
+            pass
+
+    # Specific month: YYYY-MM
+    if len(period) == 7:
+        try:
+            month_start = dt.datetime.strptime(period, "%Y-%m")
+            if month_start.month == 12:
+                month_end = month_start.replace(year=month_start.year + 1, month=1)
+            else:
+                month_end = month_start.replace(month=month_start.month + 1)
+            return month_start, month_end, dt.datetime.strftime(month_start, "%B %Y")
+        except ValueError:
+            pass
+
+    return None, None, "All Time"
+
+
+# ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
 
@@ -194,12 +238,16 @@ async def console_set_outcome(
 @router.get("/duplicates", response_class=HTMLResponse)
 def console_duplicates(
     request: Request,
+    period: str = Query("all", regex=r"^(all|today|7d|30d|\d{4}-\d{2}-\d{2}|\d{4}-\d{2})$"),
     db: Session = Depends(get_console_db),
     session: ConsoleSession = Depends(_require_session),
 ):
-    pairs = get_duplicate_pairs(db, limit=100)
+    date_from, date_to, period_label = _parse_period(period)
+    pairs = get_duplicate_pairs(db, limit=500, date_from=date_from, date_to=date_to)
     return templates.TemplateResponse(request, "console/duplicates.html", {
         "pairs": pairs,
+        "period": period,
+        "period_label": period_label,
         "page_title": "Duplicate Leads",
         "session": session,
     })
@@ -791,13 +839,15 @@ def console_analytics_admin(
 # Analytics — duplicate CSV export (tenant-scoped)
 # ---------------------------------------------------------------------------
 
-@router.get("/analytics/duplicates-export")
+@router.get("/duplicates/export")
 def console_duplicates_export(
     request: Request,
+    period: str = Query("all"),
     db: Session = Depends(get_console_db),
     session: ConsoleSession = Depends(_require_session),
 ):
-    rows = get_duplicate_pairs(db, limit=10000)
+    date_from, date_to, period_label = _parse_period(period)
+    rows = get_duplicate_pairs(db, limit=10000, date_from=date_from, date_to=date_to)
 
     output = io.StringIO()
     writer = csv.writer(output)
