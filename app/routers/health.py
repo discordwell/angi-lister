@@ -1,8 +1,11 @@
+import datetime as dt
+
 from fastapi import APIRouter, Depends
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models import OutboundMessage
 from app.schemas.api import HealthResponse, ReadyResponse
 
 router = APIRouter()
@@ -21,9 +24,19 @@ def readyz(db: Session = Depends(get_db)):
     except Exception:
         db_status = "unavailable"
 
-    # Worker heartbeat: check if any message was processed in last 5 minutes
-    # or if there are no pending messages (worker has nothing to do = healthy)
-    worker_status = "ok"  # TODO: check worker heartbeat table
+    # Worker heartbeat: check if there are stale pending messages
+    # (pending for over 5 minutes means the worker is likely down)
+    five_min_ago = dt.datetime.now(dt.UTC) - dt.timedelta(minutes=5)
+    stale_pending = (
+        db.query(func.count(OutboundMessage.id))
+        .filter(
+            OutboundMessage.status == "pending",
+            OutboundMessage.queued_at < five_min_ago,
+        )
+        .scalar()
+        or 0
+    )
+    worker_status = "stale" if stale_pending > 0 else "ok"
 
     status = "ok" if db_status == "ok" and worker_status == "ok" else "degraded"
     return ReadyResponse(status=status, db=db_status, worker=worker_status)

@@ -1,17 +1,20 @@
 """Console UI routes — server-rendered HTML pages with HTTP Basic auth."""
 
+import asyncio
+import datetime as dt
+import json
 import logging
 import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.session import get_db
+from app.db.session import get_db, SessionLocal
 from app.templates_config import templates
 from app.models import WebhookReceipt, LeadEvent
 from app.schemas.angi import AngiLeadPayload
@@ -179,3 +182,49 @@ async def console_simulate_submit(
         "error": None,
         "form_data": form_data,
     })
+
+
+# ---------------------------------------------------------------------------
+# SSE — real-time event stream
+# ---------------------------------------------------------------------------
+
+@router.get("/events")
+async def console_events(
+    request: Request,
+    credentials: HTTPBasicCredentials = Depends(_verify_credentials),
+):
+    """Server-Sent Events endpoint for real-time lead event updates."""
+
+    async def event_generator():
+        last_seen = dt.datetime.now(dt.UTC)
+        while True:
+            if await request.is_disconnected():
+                break
+            db = SessionLocal()
+            try:
+                events = (
+                    db.query(LeadEvent)
+                    .filter(LeadEvent.created_at > last_seen)
+                    .order_by(LeadEvent.created_at.asc())
+                    .limit(50)
+                    .all()
+                )
+                for event in events:
+                    data = json.dumps({
+                        "id": event.id,
+                        "event_type": event.event_type,
+                        "lead_id": event.lead_id,
+                        "payload": event.payload,
+                        "created_at": str(event.created_at),
+                    })
+                    yield f"data: {data}\n\n"
+                    last_seen = event.created_at
+            finally:
+                db.close()
+            await asyncio.sleep(1)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

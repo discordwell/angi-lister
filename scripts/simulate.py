@@ -2,7 +2,7 @@
 
 Usage:
     python -m scripts.simulate                          # 1 lead to localhost:8000
-    python -m scripts.simulate --url https://angi.cliaas.com --count 5
+    python -m scripts.simulate --url https://angi.discordwell.com --count 5
     python -m scripts.simulate --duplicate               # send same lead twice
     python -m scripts.simulate --bad-auth                # test auth rejection
     python -m scripts.simulate --bad-payload              # test parse failure
