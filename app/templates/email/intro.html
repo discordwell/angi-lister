@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ tenant_name }} — We're Ready to Help</title>
+  <style>
+    /* Reset */
+    body, table, td, p { margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f7; color: #333333; }
+    .wrapper { width: 100%; background-color: #f4f4f7; padding: 24px 0; }
+    .container { max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .header { padding: 28px 32px 20px; text-align: center; }
+    .header h1 { font-size: 22px; font-weight: 700; margin: 0; }
+    .accent-bar { height: 4px; }
+    .body-content { padding: 28px 32px 20px; line-height: 1.6; font-size: 15px; }
+    .body-content p { margin-bottom: 16px; }
+    .body-content .greeting { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
+    .cta-row { text-align: center; padding: 8px 32px 28px; }
+    .cta-btn { display: inline-block; padding: 12px 28px; border-radius: 6px; color: #ffffff !important; text-decoration: none; font-weight: 600; font-size: 15px; }
+    .footer { padding: 20px 32px; text-align: center; font-size: 12px; color: #999999; background-color: #fafafa; border-top: 1px solid #eeeeee; }
+    .footer a { color: #999999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <table class="container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+      <tr>
+        <td class="header">
+          <h1 style="color: {{ brand_color }};">{{ tenant_name }}</h1>
+        </td>
+      </tr>
+      <tr>
+        <td class="accent-bar" style="background-color: {{ brand_color }};"></td>
+      </tr>
+      <tr>
+        <td class="body-content">
+          <p class="greeting">Hi {{ first_name }},</p>
+          {% if custom_body %}
+          {{ custom_body }}
+          {% else %}
+          <p>
+            Thanks for reaching out{{ " about " + category if category else "" }}!
+            We received your request and wanted to let you know that our team is already on it.
+          </p>
+          <p>
+            At <strong>{{ tenant_name }}</strong>, we take pride in responding quickly and
+            providing top-quality service. A member of our team will be in touch shortly to
+            discuss your project and answer any questions.
+          </p>
+          {% if description %}
+          <p>
+            <strong>Your request:</strong><br>
+            <em>{{ description | truncate(200) }}</em>
+          </p>
+          {% endif %}
+          <p>
+            In the meantime, feel free to reach out to us directly if you have any
+            additional details to share.
+          </p>
+          {% endif %}
+        </td>
+      </tr>
+      {% if tenant_phone %}
+      <tr>
+        <td class="cta-row">
+          <a href="tel:{{ tenant_phone }}" class="cta-btn" style="background-color: {{ brand_color }};">
+            Call Us: {{ tenant_phone }}
+          </a>
+        </td>
+      </tr>
+      {% endif %}
+      <tr>
+        <td class="footer">
+          <p>&copy; {{ year }} {{ tenant_name }}. All rights reserved.</p>
+          <p style="margin-top: 8px;">
+            You're receiving this because you submitted a service request through Angi.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

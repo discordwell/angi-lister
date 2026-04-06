@@ -1,0 +1,145 @@
+{% extends "console/base.html" %}
+{% block content %}
+<p style="margin-bottom: 8px;"><a href="/console/">&larr; Back to Dashboard</a></p>
+<h1>{{ lead.first_name }} {{ lead.last_name }}</h1>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+
+    <!-- Left column: lead info -->
+    <div>
+        <div class="card">
+            <h2>Contact Information</h2>
+            <table>
+                <tbody>
+                    <tr><td style="width:140px; color: var(--text-muted); font-weight:600;">Status</td><td><span class="badge badge-{{ lead.status }}">{{ lead.status }}</span></td></tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Tenant</td><td>{{ lead.tenant_name or "Unmapped" }}</td></tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Email</td><td>{{ lead.email }}</td></tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Phone</td><td>{{ lead.phone }}</td></tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Address</td>
+                        <td>
+                            {{ lead.address_line1 or "" }}
+                            {% if lead.address_line2 %}<br>{{ lead.address_line2 }}{% endif %}
+                            {% if lead.city or lead.state or lead.postal_code %}
+                            <br>{{ lead.city or "" }}{% if lead.city and lead.state %}, {% endif %}{{ lead.state or "" }} {{ lead.postal_code or "" }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Category</td><td>{{ lead.category or "—" }}</td></tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Urgency</td><td>{{ lead.urgency or "—" }}</td></tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Source</td><td>{{ lead.source or "—" }}</td></tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Correlation ID</td><td style="font-family: monospace; font-size: 12px;">{{ lead.correlation_id }}</td></tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Fingerprint</td><td style="font-family: monospace; font-size: 12px;">{{ lead.fingerprint or "—" }}</td></tr>
+                    <tr><td style="color: var(--text-muted); font-weight:600;">Received</td><td>{{ lead.created_at }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        {% if lead.description %}
+        <div class="card">
+            <h2>Description</h2>
+            <p>{{ lead.description }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Outbound messages -->
+        <div class="card">
+            <h2>Outbound Messages</h2>
+            {% if lead.outbound_messages %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Channel</th>
+                        <th>Recipient</th>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>Attempts</th>
+                        <th>Queued</th>
+                        <th>Sent</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for msg in lead.outbound_messages %}
+                    <tr>
+                        <td>{{ msg.channel }}</td>
+                        <td>{{ msg.recipient }}</td>
+                        <td>{{ msg.subject }}</td>
+                        <td><span class="badge badge-{{ msg.status }}">{{ msg.status }}</span></td>
+                        <td>{{ msg.attempts }}</td>
+                        <td style="font-size:13px; color: var(--text-muted);">{{ msg.queued_at }}</td>
+                        <td style="font-size:13px; color: var(--text-muted);">{{ msg.sent_at or "—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color: var(--text-muted);">No outbound messages.</p>
+            {% endif %}
+        </div>
+
+        <!-- Duplicate matches -->
+        {% if lead.duplicate_matches %}
+        <div class="card">
+            <h2>Duplicate Matches</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Original Lead</th>
+                        <th>Score</th>
+                        <th>Evidence</th>
+                        <th>Detected</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for dup in lead.duplicate_matches %}
+                    <tr>
+                        <td><a href="/console/leads/{{ dup.original_id }}">{{ dup.original_id[:8] }}...</a></td>
+                        <td>
+                            <span class="score-bar">
+                                <span class="score-fill" style="width: {{ (dup.score * 100)|int }}%; background: {% if dup.score >= 0.7 %}var(--red){% elif dup.score >= 0.4 %}var(--orange){% else %}var(--yellow){% endif %};"></span>
+                            </span>
+                            {{ "%.0f"|format(dup.score * 100) }}%
+                        </td>
+                        <td style="font-size: 12px; font-family: monospace;">
+                            {% if dup.evidence.email_match %}email {% endif %}
+                            {% if dup.evidence.phone_match %}phone {% endif %}
+                            {% if dup.evidence.address_match %}address{% endif %}
+                        </td>
+                        <td style="font-size:13px; color: var(--text-muted);">{{ dup.created_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Raw payload -->
+        <div class="card">
+            <h2>Raw Payload</h2>
+            <pre><code>{{ lead.raw_payload | tojson(indent=2) }}</code></pre>
+        </div>
+    </div>
+
+    <!-- Right column: event timeline -->
+    <div>
+        <div class="card">
+            <h2>Event Timeline</h2>
+            {% if lead.events %}
+            <ul class="timeline">
+                {% for event in lead.events %}
+                <li>
+                    <div class="timeline-type">{{ event.event_type }}</div>
+                    <div class="timeline-time">{{ event.created_at }}</div>
+                    {% if event.payload %}
+                    <pre style="margin-top: 4px; padding: 8px; font-size: 11px;"><code>{{ event.payload | tojson(indent=2) }}</code></pre>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p style="color: var(--text-muted);">No events recorded.</p>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

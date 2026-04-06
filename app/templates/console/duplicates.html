@@ -1,0 +1,84 @@
+{% extends "console/base.html" %}
+{% block content %}
+<h1>Duplicate Leads</h1>
+<p style="color: var(--text-muted); margin-bottom: 20px;">
+    Leads flagged as potential duplicates based on matching email, phone, and address.
+    Use this data to file rebate claims with Angi.
+</p>
+
+{% if pairs %}
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Duplicate Lead</th>
+                <th>Original Lead</th>
+                <th>Score</th>
+                <th>Evidence</th>
+                <th>Detected</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pair in pairs %}
+            <tr>
+                <td>
+                    <a href="/console/leads/{{ pair.lead_id }}">{{ pair.lead_name }}</a>
+                    <div style="font-size: 12px; color: var(--text-muted);">{{ pair.lead_email }}</div>
+                </td>
+                <td>
+                    <a href="/console/leads/{{ pair.original_id }}">{{ pair.original_name }}</a>
+                    <div style="font-size: 12px; color: var(--text-muted);">{{ pair.original_email }}</div>
+                </td>
+                <td>
+                    <span class="score-bar">
+                        <span class="score-fill" style="width: {{ (pair.score * 100)|int }}%; background: {% if pair.score >= 0.7 %}var(--red){% elif pair.score >= 0.4 %}var(--orange){% else %}var(--yellow){% endif %};"></span>
+                    </span>
+                    {{ "%.0f"|format(pair.score * 100) }}%
+                </td>
+                <td style="font-size: 13px;">
+                    {% if pair.evidence.email_match %}<span class="badge badge-duplicate" style="margin: 1px;">email</span>{% endif %}
+                    {% if pair.evidence.phone_match %}<span class="badge badge-duplicate" style="margin: 1px;">phone</span>{% endif %}
+                    {% if pair.evidence.address_match %}<span class="badge badge-duplicate" style="margin: 1px;">address</span>{% endif %}
+                </td>
+                <td style="color: var(--text-muted); font-size: 13px;">{{ pair.created_at.strftime('%Y-%m-%d %H:%M') if pair.created_at else "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+    <h2>Rebate Summary</h2>
+    <p style="color: var(--text-muted); margin-bottom: 12px;">
+        {{ pairs|length }} duplicate pair(s) detected. Leads with a score of 70%+ are strong duplicate candidates for rebate claims.
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th>Score Range</th>
+                <th>Count</th>
+                <th>Recommendation</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="score-bar"><span class="score-fill" style="width:100%; background:var(--red);"></span></span> 70-100%</td>
+                <td>{{ pairs|selectattr('score', 'ge', 0.7)|list|length }}</td>
+                <td style="color: var(--green);">File rebate claim — strong match</td>
+            </tr>
+            <tr>
+                <td><span class="score-bar"><span class="score-fill" style="width:60%; background:var(--orange);"></span></span> 40-69%</td>
+                <td>{{ pairs|selectattr('score', 'lt', 0.7)|list|length }}</td>
+                <td style="color: var(--yellow);">Review manually — partial match</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+{% else %}
+<div class="card" style="text-align: center; padding: 48px;">
+    <p style="color: var(--text-muted); font-size: 16px;">No duplicate leads detected yet.</p>
+    <p style="color: var(--text-muted); margin-top: 8px;">Duplicates are flagged automatically when leads share matching email, phone, or address within the same tenant.</p>
+</div>
+{% endif %}
+{% endblock %}

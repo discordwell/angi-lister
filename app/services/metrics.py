@@ -1,0 +1,258 @@
+"""Metrics service — computes dashboard KPIs from lead events and outbound messages."""
+
+import datetime as dt
+import logging
+from statistics import median
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.models import Lead, LeadEvent, OutboundMessage, DuplicateMatch, WebhookReceipt
+
+log = logging.getLogger(__name__)
+
+
+def get_metrics_summary(db: Session) -> dict:
+    """Compute the MetricsSummary fields for the console dashboard.
+
+    Returns a dict matching the MetricsSummary schema:
+      - total_leads_24h
+      - total_leads_all
+      - median_speed_to_lead_seconds
+      - delivery_success_rate
+      - duplicate_rate
+      - unmapped_count
+      - parse_failure_count
+    """
+
+    now = dt.datetime.now(dt.UTC)
+    h24_ago = now - dt.timedelta(hours=24)
+
+    # Total leads
+    total_leads_all: int = db.query(func.count(Lead.id)).scalar() or 0
+    total_leads_24h: int = (
+        db.query(func.count(Lead.id))
+        .filter(Lead.created_at >= h24_ago)
+        .scalar()
+        or 0
+    )
+
+    # Unmapped leads
+    unmapped_count: int = (
+        db.query(func.count(Lead.id))
+        .filter(Lead.status == "unmapped")
+        .scalar()
+        or 0
+    )
+
+    # Parse failures (receipts that failed parsing)
+    parse_failure_count: int = (
+        db.query(func.count(WebhookReceipt.id))
+        .filter(WebhookReceipt.parse_valid == False)  # noqa: E712
+        .scalar()
+        or 0
+    )
+
+    # Duplicate rate
+    dup_count: int = db.query(func.count(DuplicateMatch.id)).scalar() or 0
+    duplicate_rate: float | None = None
+    if total_leads_all > 0:
+        duplicate_rate = round(dup_count / total_leads_all, 4)
+
+    # Delivery success rate (sent vs total outbound messages, excluding simulated)
+    total_messages: int = (
+        db.query(func.count(OutboundMessage.id))
+        .filter(OutboundMessage.is_simulated == False)  # noqa: E712
+        .scalar()
+        or 0
+    )
+    sent_messages: int = (
+        db.query(func.count(OutboundMessage.id))
+        .filter(
+            OutboundMessage.is_simulated == False,  # noqa: E712
+            OutboundMessage.status == "sent",
+        )
+        .scalar()
+        or 0
+    )
+    delivery_success_rate: float | None = None
+    if total_messages > 0:
+        delivery_success_rate = round(sent_messages / total_messages, 4)
+
+    # Median speed-to-lead: time between lead_created event and email_sent event
+    # for each lead that has both events.
+    speed_to_lead_seconds: list[float] = []
+    leads_with_events = (
+        db.query(Lead.id)
+        .filter(Lead.tenant_id.isnot(None))
+        .all()
+    )
+    lead_ids = [row[0] for row in leads_with_events]
+
+    if lead_ids:
+        # Fetch lead_created and email_sent events for these leads
+        created_events = (
+            db.query(LeadEvent.lead_id, LeadEvent.created_at)
+            .filter(
+                LeadEvent.lead_id.in_(lead_ids),
+                LeadEvent.event_type == "lead_created",
+            )
+            .all()
+        )
+        sent_events = (
+            db.query(LeadEvent.lead_id, LeadEvent.created_at)
+            .filter(
+                LeadEvent.lead_id.in_(lead_ids),
+                LeadEvent.event_type == "email_sent",
+            )
+            .all()
+        )
+
+        created_map = {row[0]: row[1] for row in created_events}
+        sent_map = {row[0]: row[1] for row in sent_events}
+
+        for lid in created_map:
+            if lid in sent_map:
+                delta = (sent_map[lid] - created_map[lid]).total_seconds()
+                if delta >= 0:
+                    speed_to_lead_seconds.append(delta)
+
+    median_speed: float | None = None
+    if speed_to_lead_seconds:
+        median_speed = round(median(speed_to_lead_seconds), 2)
+
+    return {
+        "total_leads_24h": total_leads_24h,
+        "total_leads_all": total_leads_all,
+        "median_speed_to_lead_seconds": median_speed,
+        "delivery_success_rate": delivery_success_rate,
+        "duplicate_rate": duplicate_rate,
+        "unmapped_count": unmapped_count,
+        "parse_failure_count": parse_failure_count,
+    }
+
+
+def get_recent_leads(db: Session, limit: int = 50) -> list[dict]:
+    """Return the most recent leads as dicts for the dashboard table."""
+
+    leads = (
+        db.query(Lead)
+        .order_by(Lead.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    results = []
+    for lead in leads:
+        tenant_name = lead.tenant.name if lead.tenant else None
+        results.append({
+            "id": lead.id,
+            "correlation_id": lead.correlation_id,
+            "tenant_name": tenant_name,
+            "first_name": lead.first_name,
+            "last_name": lead.last_name,
+            "email": lead.email,
+            "category": lead.category,
+            "urgency": lead.urgency,
+            "status": lead.status,
+            "created_at": lead.created_at,
+        })
+    return results
+
+
+def get_lead_detail(db: Session, lead_id: str) -> dict | None:
+    """Return full lead detail including events and outbound messages."""
+
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        return None
+
+    events = [
+        {
+            "id": e.id,
+            "event_type": e.event_type,
+            "payload": e.payload,
+            "created_at": str(e.created_at),
+        }
+        for e in lead.events
+    ]
+    messages = [
+        {
+            "id": m.id,
+            "channel": m.channel,
+            "recipient": m.recipient,
+            "subject": m.subject,
+            "status": m.status,
+            "attempts": m.attempts,
+            "last_error": m.last_error,
+            "queued_at": str(m.queued_at),
+            "sent_at": str(m.sent_at) if m.sent_at else None,
+            "is_simulated": m.is_simulated,
+        }
+        for m in lead.outbound_messages
+    ]
+    duplicates = [
+        {
+            "id": d.id,
+            "original_id": d.original_id,
+            "score": d.score,
+            "evidence": d.evidence,
+            "created_at": str(d.created_at),
+        }
+        for d in lead.duplicate_matches
+    ]
+
+    return {
+        "id": lead.id,
+        "correlation_id": lead.correlation_id,
+        "tenant_name": lead.tenant.name if lead.tenant else None,
+        "tenant_id": lead.tenant_id,
+        "first_name": lead.first_name,
+        "last_name": lead.last_name,
+        "email": lead.email,
+        "phone": lead.phone,
+        "address_line1": lead.address_line1,
+        "address_line2": lead.address_line2,
+        "city": lead.city,
+        "state": lead.state,
+        "postal_code": lead.postal_code,
+        "source": lead.source,
+        "description": lead.description,
+        "category": lead.category,
+        "urgency": lead.urgency,
+        "status": lead.status,
+        "fingerprint": lead.fingerprint,
+        "raw_payload": lead.raw_payload,
+        "created_at": str(lead.created_at),
+        "updated_at": str(lead.updated_at),
+        "events": events,
+        "outbound_messages": messages,
+        "duplicate_matches": duplicates,
+    }
+
+
+def get_duplicate_pairs(db: Session, limit: int = 100) -> list[dict]:
+    """Return duplicate match pairs for the duplicates view."""
+
+    matches = (
+        db.query(DuplicateMatch)
+        .order_by(DuplicateMatch.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    results = []
+    for m in matches:
+        lead = m.lead
+        original = m.original
+        results.append({
+            "id": m.id,
+            "lead_id": m.lead_id,
+            "original_id": m.original_id,
+            "score": m.score,
+            "evidence": m.evidence,
+            "lead_name": f"{lead.first_name} {lead.last_name}",
+            "lead_email": lead.email,
+            "original_name": f"{original.first_name} {original.last_name}",
+            "original_email": original.email,
+            "created_at": m.created_at,
+        })
+    return results

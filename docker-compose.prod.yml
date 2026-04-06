@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-angi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-angi}
+      POSTGRES_DB: ${POSTGRES_DB:-angi_lister}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-angi} -d ${POSTGRES_DB:-angi_lister}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-angi}:${POSTGRES_PASSWORD:-angi}@db:5432/${POSTGRES_DB:-angi_lister}
+    ports:
+      - "127.0.0.1:8090:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --workers 2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-angi}:${POSTGRES_PASSWORD:-angi}@db:5432/${POSTGRES_DB:-angi_lister}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m app.worker
+
+volumes:
+  pgdata:

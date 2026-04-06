@@ -1,0 +1,19 @@
+{{ tenant_name }}
+{{ "=" * tenant_name|length }}
+
+Hi {{ first_name }},
+
+{% if custom_body %}{{ custom_body }}{% else %}Thanks for reaching out{{ " about " + category if category else "" }}! We received your request and wanted to let you know that our team is already on it.
+
+At {{ tenant_name }}, we take pride in responding quickly and providing top-quality service. A member of our team will be in touch shortly to discuss your project and answer any questions.
+{% if description %}
+Your request:
+"{{ description | truncate(200) }}"
+{% endif %}
+In the meantime, feel free to reach out to us directly if you have any additional details to share.{% endif %}
+{% if tenant_phone %}
+Call us: {{ tenant_phone }}{% endif %}
+
+---
+(c) {{ year }} {{ tenant_name }}. All rights reserved.
+You're receiving this because you submitted a service request through Angi.

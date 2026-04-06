@@ -1,0 +1,120 @@
+"""Test fixtures — uses SQLite for fast, isolated tests."""
+
+import os
+
+# Override DATABASE_URL before any app imports
+os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+os.environ["ANGI_API_KEY"] = "test-key"
+os.environ["RESEND_API_KEY"] = ""
+os.environ["SENDER_EMAIL"] = "test@example.com"
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.models import Base, Tenant, AngiMapping
+from app.db.session import get_db
+from app.main import create_app
+
+
+@pytest.fixture(scope="session")
+def engine():
+    eng = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(eng, "connect")
+    def set_sqlite_pragma(dbapi_conn, _):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(bind=eng)
+    return eng
+
+
+@pytest.fixture
+def db(engine):
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+
+    yield session
+
+    session.close()
+    transaction.rollback()
+    connection.close()
+
+
+@pytest.fixture
+def client(db):
+    app = create_app()
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture
+def seeded_db(db):
+    """DB with demo tenants and mappings."""
+    t1 = Tenant(
+        name="Apex HVAC Indianapolis", slug="apex-hvac",
+        brand_color="#2563eb", phone="(317) 555-0101",
+        email="service@apexhvac.example.com", email_from_name="Apex HVAC",
+    )
+    t2 = Tenant(
+        name="BlueWave Plumbing Co", slug="bluewave-plumbing",
+        brand_color="#0d9488", phone="(317) 555-0102",
+        email="hello@bluewaveplumbing.example.com", email_from_name="BlueWave Plumbing",
+    )
+    db.add_all([t1, t2])
+    db.flush()
+
+    db.add(AngiMapping(al_account_id="100001", tenant_id=t1.id))
+    db.add(AngiMapping(al_account_id="100002", tenant_id=t2.id))
+    db.flush()
+
+    return db
+
+
+@pytest.fixture
+def seeded_client(seeded_db):
+    app = create_app()
+
+    def override_get_db():
+        yield seeded_db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as c:
+        yield c
+
+
+SAMPLE_LEAD = {
+    "FirstName": "Jane",
+    "LastName": "Doe",
+    "PhoneNumber": "5551234567",
+    "PostalAddress": {
+        "AddressFirstLine": "123 Main St",
+        "AddressSecondLine": "",
+        "City": "Indianapolis",
+        "State": "IN",
+        "PostalCode": "46201",
+    },
+    "Email": "jane.doe@example.com",
+    "Source": "Angie's List Quote Request",
+    "Description": "Need AC repair, unit not cooling.",
+    "Category": "Indianapolis - HVAC Repair",
+    "Urgency": "This Week",
+    "CorrelationId": "test-corr-001",
+    "ALAccountId": "100001",
+}

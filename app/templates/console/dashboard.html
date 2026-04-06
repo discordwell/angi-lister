@@ -1,0 +1,93 @@
+{% extends "console/base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<!-- KPI tiles -->
+<div class="metrics-grid">
+    <div class="metric-tile">
+        <div class="metric-value">{{ metrics.total_leads_24h }}</div>
+        <div class="metric-label">Leads (24h)</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value">{{ metrics.total_leads_all }}</div>
+        <div class="metric-label">Total Leads</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if metrics.median_speed_to_lead_seconds is not none and metrics.median_speed_to_lead_seconds > 300 %}warn{% elif metrics.median_speed_to_lead_seconds is not none %}ok{% endif %}">
+            {% if metrics.median_speed_to_lead_seconds is not none %}
+                {{ "%.1f"|format(metrics.median_speed_to_lead_seconds) }}s
+            {% else %}
+                —
+            {% endif %}
+        </div>
+        <div class="metric-label">Median Speed-to-Lead</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if metrics.delivery_success_rate is not none and metrics.delivery_success_rate >= 0.95 %}ok{% elif metrics.delivery_success_rate is not none and metrics.delivery_success_rate >= 0.8 %}warn{% elif metrics.delivery_success_rate is not none %}danger{% endif %}">
+            {% if metrics.delivery_success_rate is not none %}
+                {{ "%.1f"|format(metrics.delivery_success_rate * 100) }}%
+            {% else %}
+                —
+            {% endif %}
+        </div>
+        <div class="metric-label">Delivery Rate</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if metrics.duplicate_rate is not none and metrics.duplicate_rate > 0.1 %}warn{% endif %}">
+            {% if metrics.duplicate_rate is not none %}
+                {{ "%.1f"|format(metrics.duplicate_rate * 100) }}%
+            {% else %}
+                —
+            {% endif %}
+        </div>
+        <div class="metric-label">Duplicate Rate</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if metrics.unmapped_count > 0 %}warn{% endif %}">
+            {{ metrics.unmapped_count }}
+        </div>
+        <div class="metric-label">Unmapped Leads</div>
+    </div>
+    <div class="metric-tile">
+        <div class="metric-value {% if metrics.parse_failure_count > 0 %}danger{% endif %}">
+            {{ metrics.parse_failure_count }}
+        </div>
+        <div class="metric-label">Parse Failures</div>
+    </div>
+</div>
+
+<!-- Recent leads table -->
+<div class="card">
+    <h2>Recent Leads</h2>
+    {% if leads %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Tenant</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th>Received</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lead in leads %}
+            <tr>
+                <td><a href="/console/leads/{{ lead.id }}">{{ lead.first_name }} {{ lead.last_name }}</a></td>
+                <td>{{ lead.email }}</td>
+                <td>{{ lead.tenant_name or "—" }}</td>
+                <td>{{ lead.category or "—" }}</td>
+                <td>
+                    <span class="badge badge-{{ lead.status }}">{{ lead.status }}</span>
+                </td>
+                <td style="color: var(--text-muted); font-size: 13px;">{{ lead.created_at.strftime('%Y-%m-%d %H:%M') if lead.created_at else "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--text-muted); text-align: center; padding: 32px;">No leads yet. <a href="/console/simulate">Simulate one</a> or send a webhook.</p>
+    {% endif %}
+</div>
+{% endblock %}

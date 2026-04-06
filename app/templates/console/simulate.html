@@ -1,0 +1,147 @@
+{% extends "console/base.html" %}
+{% block content %}
+<h1>Simulate Lead</h1>
+<p style="color: var(--text-muted); margin-bottom: 20px;">
+    Submit a test lead as if Angi sent it. The lead will be processed through the full pipeline
+    but outbound messages will be marked as simulated.
+</p>
+
+{% if result %}
+<div class="alert alert-success">
+    Lead created successfully.
+    <a href="/console/leads/{{ result.lead_id }}">View lead {{ result.lead_id[:8] }}...</a>
+    — Status: <strong>{{ result.status }}</strong>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+    <form method="POST" action="/console/simulate">
+        <div class="form-grid">
+
+            <div class="form-group">
+                <label for="first_name">First Name *</label>
+                <input type="text" id="first_name" name="first_name" required
+                       value="{{ form_data.FirstName if form_data else '' }}"
+                       placeholder="Jane">
+            </div>
+
+            <div class="form-group">
+                <label for="last_name">Last Name *</label>
+                <input type="text" id="last_name" name="last_name" required
+                       value="{{ form_data.LastName if form_data else '' }}"
+                       placeholder="Doe">
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" name="email" required
+                       value="{{ form_data.Email if form_data else '' }}"
+                       placeholder="jane@example.com">
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Phone *</label>
+                <input type="text" id="phone" name="phone" required
+                       value="{{ form_data.PhoneNumber if form_data else '' }}"
+                       placeholder="(555) 123-4567">
+            </div>
+
+            <div class="form-group">
+                <label for="al_account_id">AL Account ID *</label>
+                <input type="text" id="al_account_id" name="al_account_id" required
+                       value="{{ form_data.ALAccountId if form_data else '' }}"
+                       placeholder="100001=Apex HVAC, 100002=BlueWave, 100003=Spark">
+            </div>
+
+            <div class="form-group">
+                <label for="category">Category</label>
+                <input type="text" id="category" name="category"
+                       value="{{ form_data.Category if form_data else '' }}"
+                       placeholder="HVAC, Plumbing, Electrical...">
+            </div>
+
+            <div class="form-group">
+                <label for="urgency">Urgency</label>
+                <select id="urgency" name="urgency">
+                    <option value="">Select...</option>
+                    <option value="This Week" {% if form_data and form_data.Urgency == 'This Week' %}selected{% endif %}>This Week</option>
+                    <option value="Within 48 Hours" {% if form_data and form_data.Urgency == 'Within 48 Hours' %}selected{% endif %}>Within 48 Hours</option>
+                    <option value="Emergency" {% if form_data and form_data.Urgency == 'Emergency' %}selected{% endif %}>Emergency</option>
+                    <option value="Flexible" {% if form_data and form_data.Urgency == 'Flexible' %}selected{% endif %}>Flexible</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="source">Source</label>
+                <input type="text" id="source" name="source"
+                       value="{{ form_data.Source if form_data else 'Console Simulation' }}"
+                       placeholder="Console Simulation">
+            </div>
+
+            <!-- Address fields -->
+            <div class="form-group full-width" style="margin-top: 8px;">
+                <h2 style="font-size: 14px; margin-bottom: 8px;">Address</h2>
+            </div>
+
+            <div class="form-group">
+                <label for="address_line1">Street Address</label>
+                <input type="text" id="address_line1" name="address_line1"
+                       value="{{ form_data.PostalAddress.AddressFirstLine if form_data and form_data.PostalAddress else '' }}"
+                       placeholder="123 Main St">
+            </div>
+
+            <div class="form-group">
+                <label for="address_line2">Apt / Suite</label>
+                <input type="text" id="address_line2" name="address_line2"
+                       value="{{ form_data.PostalAddress.AddressSecondLine if form_data and form_data.PostalAddress else '' }}"
+                       placeholder="Apt 4B">
+            </div>
+
+            <div class="form-group">
+                <label for="city">City</label>
+                <input type="text" id="city" name="city"
+                       value="{{ form_data.PostalAddress.City if form_data and form_data.PostalAddress else '' }}"
+                       placeholder="San Francisco">
+            </div>
+
+            <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                    <label for="state">State</label>
+                    <input type="text" id="state" name="state"
+                           value="{{ form_data.PostalAddress.State if form_data and form_data.PostalAddress else '' }}"
+                           placeholder="CA">
+                </div>
+                <div>
+                    <label for="postal_code">Zip</label>
+                    <input type="text" id="postal_code" name="postal_code"
+                           value="{{ form_data.PostalAddress.PostalCode if form_data and form_data.PostalAddress else '' }}"
+                           placeholder="94105">
+                </div>
+            </div>
+
+            <div class="form-group full-width">
+                <label for="description">Description</label>
+                <textarea id="description" name="description"
+                          placeholder="Customer needs help with...">{{ form_data.Description if form_data else '' }}</textarea>
+            </div>
+
+            <div class="form-group full-width">
+                <label for="correlation_id">Correlation ID (auto-generated if blank)</label>
+                <input type="text" id="correlation_id" name="correlation_id"
+                       value=""
+                       placeholder="Leave blank for auto-generated UUID"
+                       style="font-family: monospace;">
+            </div>
+
+        </div>
+
+        <div style="margin-top: 16px;">
+            <button type="submit" class="btn">Submit Simulated Lead</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
