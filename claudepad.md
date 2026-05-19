@@ -2,6 +2,12 @@
 
 ## Session Summaries
 
+### 2026-05-19T02:35Z
+**Decommissioned.** Project sat idle since 2026-04-06 demo (64 leads, all from that day). Investigated the ongoing `volume_anomaly` warning — turned out to be the canary working correctly: `check_volume_anomaly` fires when leads exist but none arrived in 6h, which was simply true. No emails were being sent (ALERT_EMAIL unset in prod), just log lines. User opted to decommission rather than tune the check. Stopped containers via `docker compose -f docker-compose.prod.yml down` on ovh2, removed `/etc/caddy/sites/angi.discordwell.com`, reloaded Caddy. `/opt/angi-lister` directory and `pgdata` volume preserved on server. README updated with decommission notice. To revive: re-add Caddy site, run `./infra/deploy.sh`.
+
+### 2026-05-19T02:20Z
+Fixed `angi-lister-worker-1` reporting unhealthy in production (47k failing streak since deploy). Root cause: Dockerfile bakes in `HEALTHCHECK curl localhost:8000/healthz` which is correct for the api but inherited by the worker, which doesn't serve HTTP. Fix: added `healthcheck: disable: true` to worker service in docker-compose.prod.yml. `restart: unless-stopped` still handles real crashes. Deployed; worker now reports plain "Up" with no health status. Worker functionally was fine all along — daily monitoring heartbeats continue, including ongoing `volume_anomaly` warning worth a separate look.
+
 ### 2026-04-06T23:10Z
 Added two stretch features: (1) Conversion feedback loop — POST /api/v1/leads/{id}/outcome and console UI with booked/won/lost buttons, conversion_rate KPI on dashboard. (2) Schema drift monitoring — new app/services/monitoring.py with error rate checks, schema drift aggregation, volume anomaly detection, debounced alerting via Resend, daily health check in worker loop, GET /api/v1/health/schema endpoint. Added 27 new tests (test_conversion.py, test_monitoring.py). Fixed _set_tenant -> set_tenant import in api_auth.py. All 103 tests pass. Config: ALERT_EMAIL, ALERT_ERROR_THRESHOLD, ALERT_WINDOW_MINUTES.
 
