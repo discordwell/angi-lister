@@ -39,6 +39,8 @@ services:
       db:
         condition: service_healthy
     command: python -m app.worker
+    healthcheck:
+      disable: true
 
 volumes:
   pgdata:
