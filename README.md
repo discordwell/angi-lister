@@ -1,9 +1,11 @@
 # Angi-Lister
 
+> **Decommissioned 2026-05-19.** This project was built for the Netic deployment engineer assessment (demoed 2026-04-06) and has been idle since. The production stack on ovh2 has been stopped and the `angi.discordwell.com` Caddy site removed. Source is preserved here for reference; the `/opt/angi-lister` directory and `pgdata` Docker volume remain on the server in case archival is wanted. To bring it back: re-add the Caddy site config and run `./infra/deploy.sh`.
+
 Production webhook integration for receiving and processing consumer leads from Angi. Built for the Netic deployment engineer assessment.
 
-**Live:** https://angi.discordwell.com
-**ngrok:** https://uneffected-unlevelly-ricky.ngrok-free.dev
+**Live:** ~~https://angi.discordwell.com~~ (decommissioned)
+**ngrok:** ~~https://uneffected-unlevelly-ricky.ngrok-free.dev~~ (decommissioned)
 
 ## Try It Now
 
