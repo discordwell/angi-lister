@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.models import ApiKey, Tenant
+from app.models import Tenant
 from app.services.api_auth import generate_api_key
 
 
@@ -30,9 +30,14 @@ def admin_client(admin_key, db):
     app.dependency_overrides[get_db] = override
     app.dependency_overrides[get_bypass_db] = override
 
+    # Hand the app fresh sessions on the fixture's connection: they see the
+    # fixture's uncommitted data and roll back with the outer transaction, but
+    # have their own lifecycle so require_admin closing them can't detach the
+    # fixture session's objects.
     import app.services.api_auth as auth_mod
+    from sqlalchemy.orm import Session
     original = auth_mod.SessionLocal
-    auth_mod.SessionLocal = lambda: db
+    auth_mod.SessionLocal = lambda: Session(bind=db.get_bind(), autoflush=False)
 
     from fastapi.testclient import TestClient
     with TestClient(app) as c:

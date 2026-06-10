@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from app.models import ApiKey, Lead, Tenant, AngiMapping
+from app.models import Lead, Tenant, AngiMapping
 from app.services.api_auth import generate_api_key
 
 
@@ -38,10 +38,14 @@ def tenant_client(tenant_with_key, db):
     app.dependency_overrides[get_db] = override
     app.dependency_overrides[get_bypass_db] = override
 
-    # Also override SessionLocal in api_auth so tenant-scoped sessions use test DB
+    # Hand the app fresh sessions on the fixture's connection: they see the
+    # fixture's uncommitted data and roll back with the outer transaction, but
+    # have their own lifecycle so require_tenant closing them can't detach the
+    # fixture session's objects.
     import app.services.api_auth as auth_mod
+    from sqlalchemy.orm import Session
     original_session_local = auth_mod.SessionLocal
-    auth_mod.SessionLocal = lambda: db
+    auth_mod.SessionLocal = lambda: Session(bind=db.get_bind(), autoflush=False)
 
     from fastapi.testclient import TestClient
     with TestClient(app) as c:

@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
 
-from app.models import TenantHomeBase, TenantJobRule, TenantSpecial
+from app.models import Tenant, TenantHomeBase, TenantJobRule, TenantSpecial
 from app.schemas.api import (
     HomeBaseIn, HomeBaseOut, JobRuleIn, JobRuleOut,
     LeadDetail, LeadSummary, MetricsSummary,
@@ -102,10 +102,7 @@ def tenant_duplicates_export(ctx: TenantContext = Depends(require_tenant)):
 
 # ── Config (read/update) ────────────────────────────────────────────────────
 
-@router.get("/config", response_model=TenantConfig)
-def tenant_config_get(ctx: TenantContext = Depends(require_tenant)):
-    t = ctx.tenant
-    db = ctx.db
+def _build_tenant_config(db, t: Tenant) -> TenantConfig:
     home_bases = db.query(TenantHomeBase).filter(TenantHomeBase.tenant_id == t.id).all()
     job_rules = db.query(TenantJobRule).filter(TenantJobRule.tenant_id == t.id).all()
     specials = db.query(TenantSpecial).filter(TenantSpecial.tenant_id == t.id).all()
@@ -124,18 +121,28 @@ def tenant_config_get(ctx: TenantContext = Depends(require_tenant)):
     )
 
 
+@router.get("/config", response_model=TenantConfig)
+def tenant_config_get(ctx: TenantContext = Depends(require_tenant)):
+    return _build_tenant_config(ctx.db, ctx.tenant)
+
+
 @router.put("/config", response_model=TenantConfig)
 def tenant_config_update(
     body: TenantConfigUpdate,
     ctx: TenantContext = Depends(require_tenant),
 ):
-    t = ctx.tenant
-    updates = body.model_dump(exclude_unset=True)
-    for field, value in updates.items():
+    # ctx.tenant belongs to the auth session, which is rolled back when the
+    # request ends — apply updates to the tenant row in ctx.db so they are
+    # committed with this request's transaction.
+    t = ctx.db.get(Tenant, ctx.tenant.id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
         setattr(t, field, value)
     ctx.db.flush()
+    result = _build_tenant_config(ctx.db, t)
     ctx.db.commit()
-    return tenant_config_get(ctx)
+    return result
 
 
 # ── Home Bases CRUD ──────────────────────────────────────────────────────────
@@ -147,8 +154,11 @@ def tenant_add_home_base(body: HomeBaseIn, ctx: TenantContext = Depends(require_
         lat=body.lat, lng=body.lng,
     )
     ctx.db.add(hb)
+    ctx.db.flush()
+    # Build the response before commit so no post-commit refresh is needed
+    result = HomeBaseOut(id=hb.id, name=hb.name, address=hb.address, lat=hb.lat, lng=hb.lng, created_at=hb.created_at)
     ctx.db.commit()
-    return HomeBaseOut(id=hb.id, name=hb.name, address=hb.address, lat=hb.lat, lng=hb.lng, created_at=hb.created_at)
+    return result
 
 
 @router.delete("/home-bases/{hb_id}", status_code=204)
@@ -174,8 +184,10 @@ def tenant_add_job_rule(body: JobRuleIn, ctx: TenantContext = Depends(require_te
         rule_type=body.rule_type,
     )
     ctx.db.add(rule)
+    ctx.db.flush()
+    result = JobRuleOut(id=rule.id, category_pattern=rule.category_pattern, rule_type=rule.rule_type, created_at=rule.created_at)
     ctx.db.commit()
-    return JobRuleOut(id=rule.id, category_pattern=rule.category_pattern, rule_type=rule.rule_type, created_at=rule.created_at)
+    return result
 
 
 @router.delete("/job-rules/{rule_id}", status_code=204)
@@ -199,8 +211,10 @@ def tenant_add_special(body: SpecialIn, ctx: TenantContext = Depends(require_ten
         discount_text=body.discount_text, conditions=body.conditions, active=body.active,
     )
     ctx.db.add(sp)
+    ctx.db.flush()
+    result = SpecialOut(id=sp.id, name=sp.name, description=sp.description, discount_text=sp.discount_text, conditions=sp.conditions, active=sp.active, created_at=sp.created_at)
     ctx.db.commit()
-    return SpecialOut(id=sp.id, name=sp.name, description=sp.description, discount_text=sp.discount_text, conditions=sp.conditions, active=sp.active, created_at=sp.created_at)
+    return result
 
 
 @router.put("/specials/{special_id}", response_model=SpecialOut)
@@ -212,8 +226,10 @@ def tenant_update_special(special_id: str, body: SpecialUpdate, ctx: TenantConte
         raise HTTPException(status_code=404, detail="Special not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(sp, field, value)
+    ctx.db.flush()
+    result = SpecialOut(id=sp.id, name=sp.name, description=sp.description, discount_text=sp.discount_text, conditions=sp.conditions, active=sp.active, created_at=sp.created_at)
     ctx.db.commit()
-    return SpecialOut(id=sp.id, name=sp.name, description=sp.description, discount_text=sp.discount_text, conditions=sp.conditions, active=sp.active, created_at=sp.created_at)
+    return result
 
 
 @router.delete("/specials/{special_id}", status_code=204)

@@ -20,10 +20,14 @@ Angi (HTTP POST)  ─→  Caddy (TLS)  ─→  FastAPI API  ─→  PostgreSQL
 ### Row-Level Security (Multi-Tenant Isolation)
 PostgreSQL RLS enforces tenant data isolation at the database level. Every tenant-owned table has `FORCE ROW LEVEL SECURITY` and a `tenant_isolation` policy that checks `current_setting('app.current_tenant', true)`. Three access modes:
 - **`__bypass__`** — webhook handler, worker, migrations, seed (full access)
-- **`__all__`** — admin console (read all tenants)
-- **`{tenant_uuid}`** — tenant-scoped console (sees only own data)
+- **`__all__`** — admin console and admin API (read all tenants)
+- **`{tenant_uuid}`** — tenant-scoped console and tenant API (sees only own data)
 
-`SET LOCAL` is transaction-scoped, resetting automatically on commit/rollback.
+The context is always applied with `SET LOCAL` (transaction-scoped) via `set_tenant()`, in one of two modes:
+- **One-shot** (`set_tenant(db, tid)`): lasts until the current transaction ends. After a commit, reads fail closed (RLS hides every row), so handlers must build response data before committing.
+- **Session-pinned** (`set_tenant(db, tid, session_scope=True)`): an `after_begin` listener re-issues `SET LOCAL` on every new transaction for the lifetime of that Session. Used by request-scoped sessions (`get_bypass_db`, `get_console_db`, `require_tenant`, `require_admin`) and the worker/seed sessions, which commit mid-work. Because nothing is ever set at the connection level, tenant context cannot leak across requests through the connection pool.
+
+Auth lookups (`api_keys`, `console_sessions`) run on the request's bypass session; `require_tenant`/`require_admin` then yield a separate scoped session that is closed when the request finishes.
 
 ### Return 200 Fast
 The webhook handler persists the raw receipt and acknowledges immediately. Email delivery happens asynchronously via a separate worker process. This prevents Angi's retry mechanism (3 retries at 15-min intervals) from creating duplicates.

@@ -6,9 +6,7 @@ Usage:
 """
 
 import argparse
-import sys
 
-from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import SessionLocal, set_tenant
@@ -72,7 +70,8 @@ DEMO_TENANTS = [
 
 def seed(reset: bool = False) -> None:
     db = SessionLocal()
-    set_tenant(db, "__bypass__")
+    # session_scope so bypass survives the mid-seed commits below
+    set_tenant(db, "__bypass__", session_scope=True)
     try:
         if reset:
             print("Resetting: dropping and recreating tables...")

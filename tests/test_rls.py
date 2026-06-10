@@ -12,10 +12,10 @@ import uuid
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
-from app.models import Base, Tenant, AngiMapping, Lead, LeadEvent, OutboundMessage, WebhookReceipt
+from app.models import Tenant, Lead, LeadEvent, OutboundMessage, WebhookReceipt
 
 PG_URL = os.environ.get("ANGI_TEST_PG_URL")
 requires_pg = pytest.mark.skipif(not PG_URL, reason="ANGI_TEST_PG_URL not set — needs PostgreSQL for RLS tests")
@@ -156,6 +156,70 @@ class TestTenantIsolation:
         pg_session.execute(text("SET LOCAL app.current_tenant = '__all__'"))
         visible = pg_session.query(WebhookReceipt).all()
         assert receipt.id in {r.id for r in visible}
+
+    def test_session_scope_survives_commit(self, pg_engine):
+        """set_tenant(session_scope=True) re-applies the RLS context on every
+        new transaction, so sessions that commit mid-work (worker, console,
+        bypass) stay scoped — regardless of which pooled connection serves the
+        next transaction."""
+        from app.db.session import set_tenant
+
+        session = Session(bind=pg_engine)
+        t = lead = None
+        try:
+            set_tenant(session, "__bypass__", session_scope=True)
+            t = _make_tenant(session, "Scope Tenant", f"sc-{uuid.uuid4().hex[:8]}")
+            lead = _make_lead(session, t, "Scoped")
+            session.commit()  # ends the transaction that carried SET LOCAL
+
+            # New transaction — the listener must have re-applied the context.
+            visible = session.query(Lead).filter(Lead.id == lead.id).all()
+            assert len(visible) == 1
+        finally:
+            # These rows were committed; clean them up explicitly.
+            session.rollback()
+            set_tenant(session, "__bypass__", session_scope=True)
+            if lead is not None:
+                session.query(LeadEvent).filter(LeadEvent.lead_id == lead.id).delete()
+                receipt_id = lead.receipt_id
+                session.query(Lead).filter(Lead.id == lead.id).delete()
+                session.query(WebhookReceipt).filter(WebhookReceipt.id == receipt_id).delete()
+            if t is not None:
+                session.query(Tenant).filter(Tenant.id == t.id).delete()
+            session.commit()
+            session.close()
+
+    def test_one_shot_set_local_fails_closed_after_commit(self, pg_engine):
+        """Without session_scope, the tenant context ends with the transaction:
+        after a commit, RLS-protected rows are invisible (fail closed). This is
+        why API handlers build their responses before committing."""
+        from app.db.session import set_tenant
+
+        setup = Session(bind=pg_engine)
+        set_tenant(setup, "__bypass__", session_scope=True)
+        t = _make_tenant(setup, "OneShot Tenant", f"os-{uuid.uuid4().hex[:8]}")
+        lead = _make_lead(setup, t, "OneShot")
+        setup.commit()
+        lead_id, tenant_id, receipt_id = lead.id, t.id, lead.receipt_id
+        setup.close()
+
+        session = Session(bind=pg_engine)
+        try:
+            set_tenant(session, tenant_id)  # one-shot SET LOCAL
+            assert session.query(Lead).filter(Lead.id == lead_id).count() == 1
+            session.commit()
+            # Context expired with the transaction — reads now fail closed.
+            assert session.query(Lead).filter(Lead.id == lead_id).count() == 0
+        finally:
+            session.close()
+            cleanup = Session(bind=pg_engine)
+            set_tenant(cleanup, "__bypass__", session_scope=True)
+            cleanup.query(LeadEvent).filter(LeadEvent.lead_id == lead_id).delete()
+            cleanup.query(Lead).filter(Lead.id == lead_id).delete()
+            cleanup.query(WebhookReceipt).filter(WebhookReceipt.id == receipt_id).delete()
+            cleanup.query(Tenant).filter(Tenant.id == tenant_id).delete()
+            cleanup.commit()
+            cleanup.close()
 
     def test_outbound_messages_scoped(self, pg_session):
         t_a = _make_tenant(pg_session, "Tenant A", f"ta-{uuid.uuid4().hex[:8]}")
