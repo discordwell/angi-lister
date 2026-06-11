@@ -33,12 +33,12 @@ Auth lookups (`api_keys`, `console_sessions`) run on the request's bypass sessio
 The webhook handler persists the raw receipt and acknowledges immediately. Email delivery happens asynchronously via a separate worker process. This prevents Angi's retry mechanism (3 retries at 15-min intervals) from creating duplicates.
 
 ### Webhook Receipts as First-Class Records
-Every authenticated POST is captured as a `WebhookReceipt` with raw headers and body, even if the payload fails validation. This supports the monitoring requirement — when Angi changes their format without warning, we have the raw data for forensics.
+Every authenticated POST is captured as a `WebhookReceipt` with raw headers and body, even if the payload fails validation. This supports the monitoring requirement — when Angi changes their format without warning, we have the raw data for forensics. Bodies that aren't valid JSON objects at all (truncated JSON, arrays, plain text) are captured too: the literal text is stored under a `_raw_body` key (capped at 10 KB), the receipt is marked `parse_valid=false`, and the endpoint still ACKs with the `<success>` body so Angi doesn't retry.
 
 ### Outbox Pattern
 The API never sends email inline. It inserts an `OutboundMessage` row with status=pending. The worker polls for pending messages, composes the email (rendering tenant-branded templates), sends via Resend, and records the result. This gives us:
 - Crash resilience (pending messages survive restarts)
-- Retry capability (failed sends are retried up to 3x)
+- Retry capability (failed sends are retried up to 3x; crashes during processing count as attempts too, so a message that keeps raising is marked failed instead of retried forever)
 - Audit trail (every send attempt is recorded)
 
 ### Append-Only Event Log

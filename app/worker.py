@@ -11,6 +11,7 @@ Configuration:
     WORKER_POLL_INTERVAL — seconds between poll cycles (default 1.0)
 """
 
+import datetime as dt
 import logging
 import signal
 import time
@@ -20,8 +21,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.session import SessionLocal, set_tenant
 from app.utils import utcnow
-from app.models import OutboundMessage
-from app.services.email import process_outbound_message
+from app.models import LeadEvent, OutboundMessage
+from app.services.email import MAX_ATTEMPTS, process_outbound_message
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,19 +66,50 @@ def run_cycle(db: Session) -> int:
             process_outbound_message(db, msg)
             db.commit()
             processed += 1
-        except Exception:
+        except Exception as exc:
             db.rollback()
             # Re-set bypass after rollback — rollback can clear SET on some drivers
             set_tenant(db, "__bypass__", session_scope=True)
-            log.exception("Error processing outbound message %s (will retry)", msg_id)
+            log.exception("Error processing outbound message %s", msg_id)
+            _record_crashed_attempt(db, msg_id, exc)
 
     return processed
 
 
+def _record_crashed_attempt(db: Session, msg_id: str, exc: Exception) -> None:
+    """Count an attempt for a message whose processing raised.
+
+    The rollback in run_cycle also discards the attempts increment made inside
+    send_outbound_message, so without this a message that keeps raising would
+    stay 'pending' with attempts=0 and be retried every poll cycle forever.
+    """
+    try:
+        msg = db.get(OutboundMessage, msg_id)
+        if msg is None or msg.status not in ("pending", "generating"):
+            return
+        msg.attempts += 1
+        msg.last_error = f"Worker crash: {exc!r}"[:500]
+        if msg.attempts >= MAX_ATTEMPTS:
+            msg.status = "failed"
+            db.add(LeadEvent(
+                lead_id=msg.lead_id,
+                tenant_id=msg.tenant_id,
+                event_type="email_failed",
+                payload={
+                    "outbound_message_id": msg.id,
+                    "attempts": msg.attempts,
+                    "last_error": msg.last_error,
+                },
+            ))
+            log.warning("Message %s failed after %d attempts", msg.id, msg.attempts)
+        db.commit()
+    except Exception:
+        db.rollback()
+        log.exception("Could not record crashed attempt for message %s", msg_id)
+
+
 def _recover_stuck_messages(db: Session) -> int:
     """Reset messages stuck in 'generating' for more than 60s back to 'pending'."""
-    import datetime as dt
-
     cutoff = utcnow() - dt.timedelta(seconds=60)
     stuck = (
         db.query(OutboundMessage)

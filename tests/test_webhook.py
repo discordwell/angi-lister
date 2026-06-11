@@ -2,7 +2,7 @@
 
 import uuid
 
-
+from app.models import LeadEvent, WebhookReceipt
 from tests.conftest import SAMPLE_LEAD
 
 
@@ -16,6 +16,17 @@ class TestAuth:
             "/webhooks/angi/leads",
             json=SAMPLE_LEAD,
             headers={"X-API-KEY": "wrong-key"},
+        )
+        assert resp.status_code == 401
+
+    def test_non_ascii_api_key_returns_401(self, seeded_client):
+        """compare_digest rejects non-ascii str — keys must be compared as
+        bytes or a probe with e.g. latin-1 chars turns into a 500. The value
+        is sent as bytes because httpx only encodes ascii str headers."""
+        resp = seeded_client.post(
+            "/webhooks/angi/leads",
+            json=SAMPLE_LEAD,
+            headers={"X-API-KEY": "wröng-key".encode("latin-1")},
         )
         assert resp.status_code == 401
 
@@ -75,6 +86,71 @@ class TestParseFailure:
         data = resp.json()
         assert data["receipt_id"] is not None
         assert data["lead_id"] is None
+
+    def test_invalid_json_returns_200_and_captures_receipt(self, seeded_client, seeded_db):
+        """A body that isn't JSON at all must still produce a receipt and a
+        <success> ACK — a 500 here would trigger Angi retries and lose the
+        forensic capture entirely."""
+        resp = seeded_client.post(
+            "/webhooks/angi/leads",
+            content=b'{"FirstName": "Jane", "LastName":',
+            headers={"X-API-KEY": "test-key", "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["lead_id"] is None
+        assert "<success>" in data["message"]
+
+        receipt = seeded_db.get(WebhookReceipt, data["receipt_id"])
+        assert receipt is not None
+        assert receipt.parse_valid is False
+        assert '"LastName":' in receipt.raw_body["_raw_body"]
+
+        events = (
+            seeded_db.query(LeadEvent)
+            .filter(
+                LeadEvent.receipt_id == receipt.id,
+                LeadEvent.event_type == "parse_failed",
+            )
+            .all()
+        )
+        assert len(events) == 1
+        assert events[0].payload["errors"][0]["type"] == "json_invalid"
+
+    def test_non_object_json_returns_200_and_captures_receipt(self, seeded_client, seeded_db):
+        resp = seeded_client.post(
+            "/webhooks/angi/leads",
+            json=["not", "an", "object"],
+            headers={"X-API-KEY": "test-key"},
+        )
+        assert resp.status_code == 200
+        receipt = seeded_db.get(WebhookReceipt, resp.json()["receipt_id"])
+        assert receipt.parse_valid is False
+        assert receipt.raw_body["_raw_body"].startswith("[")
+        assert "not" in receipt.raw_body["_raw_body"]
+
+    def test_non_string_correlation_id_not_stored(self, seeded_client, seeded_db):
+        """An int CorrelationId fails validation; it must not be written to the
+        String receipt column either (PostgreSQL rejects the type)."""
+        bad = {**SAMPLE_LEAD, "CorrelationId": 12345}
+        resp = seeded_client.post(
+            "/webhooks/angi/leads", json=bad, headers={"X-API-KEY": "test-key"}
+        )
+        assert resp.status_code == 200
+        receipt = seeded_db.get(WebhookReceipt, resp.json()["receipt_id"])
+        assert receipt.parse_valid is False
+        assert receipt.correlation_id is None
+
+    def test_demo_endpoint_invalid_json_returns_200(self, seeded_client, seeded_db):
+        resp = seeded_client.post(
+            "/webhooks/demo/leads",
+            content=b"not json at all",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        receipt = seeded_db.get(WebhookReceipt, resp.json()["receipt_id"])
+        assert receipt.parse_valid is False
+        assert receipt.raw_body["_raw_body"] == "not json at all"
 
     def test_extra_fields_detected_as_drift(self, seeded_client):
         lead = {**SAMPLE_LEAD, "CorrelationId": str(uuid.uuid4()), "NewField": "surprise"}
