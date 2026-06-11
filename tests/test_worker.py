@@ -105,6 +105,9 @@ def worker_db():
     the whole fixture transaction), so these tests need genuine transaction
     semantics. Seeds the tenant + mapping SAMPLE_LEAD expects.
     """
+    # Drop first: a hard-killed previous run can leave rows in test.db, and
+    # the unique tenant slug would fail the seed below.
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:

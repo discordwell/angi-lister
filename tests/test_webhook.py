@@ -1,5 +1,6 @@
 """Tests for the webhook endpoint."""
 
+import json
 import uuid
 
 from app.models import LeadEvent, WebhookReceipt
@@ -116,6 +117,48 @@ class TestParseFailure:
         )
         assert len(events) == 1
         assert events[0].payload["errors"][0]["type"] == "json_invalid"
+
+    def test_utf8_bom_payload_creates_lead(self, seeded_client):
+        """A BOM-prefixed but valid payload must still ingest: json.loads
+        auto-detects BOMs from bytes (as request.json() did), while a str
+        parse rejects the BOM — silently dropping the lead, since the
+        <success> ACK suppresses Angi's retries."""
+        body = b"\xef\xbb\xbf" + json.dumps(
+            {**SAMPLE_LEAD, "CorrelationId": str(uuid.uuid4())}
+        ).encode()
+        resp = seeded_client.post(
+            "/webhooks/angi/leads",
+            content=body,
+            headers={"X-API-KEY": "test-key", "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["lead_id"] is not None
+
+    def test_deeply_nested_json_returns_200_and_captures_receipt(self, seeded_client, seeded_db):
+        """json.loads raises RecursionError (not JSONDecodeError) on deep
+        nesting — that must be a captured receipt, not a 500."""
+        depth = 10_000
+        resp = seeded_client.post(
+            "/webhooks/angi/leads",
+            content=b"[" * depth + b"]" * depth,
+            headers={"X-API-KEY": "test-key", "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        receipt = seeded_db.get(WebhookReceipt, resp.json()["receipt_id"])
+        assert receipt.parse_valid is False
+
+    def test_non_utf8_body_returns_200_and_captures_receipt(self, seeded_client, seeded_db):
+        """Invalid UTF-8 bytes raise UnicodeDecodeError from json.loads —
+        also a captured receipt, not a 500."""
+        resp = seeded_client.post(
+            "/webhooks/angi/leads",
+            content=b"\x80\x81\x82",
+            headers={"X-API-KEY": "test-key", "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        receipt = seeded_db.get(WebhookReceipt, resp.json()["receipt_id"])
+        assert receipt.parse_valid is False
+        assert receipt.raw_body["_raw_body"]  # replacement chars, but captured
 
     def test_non_object_json_returns_200_and_captures_receipt(self, seeded_client, seeded_db):
         resp = seeded_client.post(

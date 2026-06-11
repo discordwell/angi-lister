@@ -41,13 +41,21 @@ async def _capture_body(request: Request) -> tuple[dict, list[dict] | None]:
     cases the literal body text is preserved under "_raw_body" and the second
     element describes the problem (same shape as pydantic's errors()).
     """
-    text = (await request.body()).decode("utf-8", errors="replace")
+    raw = await request.body()
     try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as exc:
+        # Parse the bytes, not a decoded str: the stdlib auto-detects BOMs and
+        # UTF-16/32 from bytes (as request.json() did), while a str parse
+        # rejects a BOM-prefixed but otherwise valid payload.
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as exc:
+        # RecursionError: deeply nested JSON; UnicodeDecodeError: non-UTF-8
+        # bytes. Both must be captured + ACKed, not become a 500 (no receipt,
+        # and Angi would retry).
+        text = raw.decode("utf-8", errors="replace")
         wrapped = {"_raw_body": text[:MAX_CAPTURED_BODY_CHARS]}
-        return wrapped, [{"type": "json_invalid", "msg": str(exc)}]
+        return wrapped, [{"type": "json_invalid", "msg": str(exc)[:500]}]
     if not isinstance(parsed, dict):
+        text = raw.decode("utf-8", errors="replace")
         wrapped = {"_raw_body": text[:MAX_CAPTURED_BODY_CHARS]}
         return wrapped, [{
             "type": "json_not_object",
