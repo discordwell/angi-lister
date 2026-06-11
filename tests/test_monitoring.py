@@ -4,6 +4,7 @@ import datetime as dt
 import uuid
 from unittest.mock import patch
 
+from app.utils import utcnow
 from app.models import Lead, WebhookReceipt
 from app.services import monitoring
 from app.services.monitoring import (
@@ -26,7 +27,7 @@ def _create_receipt(db, parse_valid=True, schema_drift=None, minutes_ago=0):
         auth_valid=True,
         parse_valid=parse_valid,
         schema_drift=schema_drift,
-        received_at=dt.datetime.now(dt.UTC) - dt.timedelta(minutes=minutes_ago),
+        received_at=utcnow() - dt.timedelta(minutes=minutes_ago),
     )
     db.add(receipt)
     db.flush()
@@ -44,7 +45,7 @@ def _create_lead(db, hours_ago=0):
         email="test@example.com",
         phone="5550000000",
         raw_payload={},
-        created_at=dt.datetime.now(dt.UTC) - dt.timedelta(hours=hours_ago),
+        created_at=utcnow() - dt.timedelta(hours=hours_ago),
     )
     db.add(lead)
     db.flush()

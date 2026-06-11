@@ -1,9 +1,7 @@
 """Tests for the webhook endpoint."""
 
-import copy
 import uuid
 
-import pytest
 
 from tests.conftest import SAMPLE_LEAD
 

@@ -13,6 +13,7 @@ from app.schemas.api import (
 )
 from app.services.api_auth import AdminContext, require_admin, generate_api_key
 from app.services.metrics import get_metrics_summary, get_recent_leads
+from app.utils import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -100,13 +101,12 @@ def admin_create_api_key(
 def admin_revoke_api_key(
     tenant_id: str, key_id: str, ctx: AdminContext = Depends(require_admin),
 ):
-    import datetime as dt
     key = ctx.db.query(ApiKey).filter(
         ApiKey.id == key_id, ApiKey.tenant_id == tenant_id,
     ).first()
     if not key:
         raise HTTPException(status_code=404, detail="API key not found")
-    key.revoked_at = dt.datetime.now(dt.UTC).replace(tzinfo=None)
+    key.revoked_at = utcnow()
     ctx.db.commit()
     log.info("Admin %s revoked API key %s", ctx.email, key_id)
     return Response(status_code=204)

@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class TenantHomeBase(Base):
@@ -19,7 +20,7 @@ class TenantHomeBase(Base):
     lat: Mapped[float] = mapped_column(Float, nullable=False)
     lng: Mapped[float] = mapped_column(Float, nullable=False)
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
 
     tenant = relationship("Tenant", back_populates="home_bases")

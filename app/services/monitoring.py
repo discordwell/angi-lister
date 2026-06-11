@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Lead, WebhookReceipt
+from app.utils import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def check_error_rate(db: Session, window_minutes: int | None = None) -> dict | N
     """
     window = window_minutes or settings.alert_window_minutes
     threshold = settings.alert_error_threshold
-    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(minutes=window)
+    cutoff = utcnow() - dt.timedelta(minutes=window)
 
     failure_count: int = (
         db.query(func.count(WebhookReceipt.id))
@@ -56,7 +57,7 @@ def check_schema_drift(db: Session, window_hours: int = 24) -> dict | None:
 
     Returns a dict with drift summary if found, else None.
     """
-    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(hours=window_hours)
+    cutoff = utcnow() - dt.timedelta(hours=window_hours)
 
     all_recent = (
         db.query(WebhookReceipt)
@@ -107,7 +108,7 @@ def check_volume_anomaly(db: Session, quiet_hours: int = 6) -> dict | None:
     if total_leads == 0:
         return None
 
-    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(hours=quiet_hours)
+    cutoff = utcnow() - dt.timedelta(hours=quiet_hours)
     recent_leads: int = (
         db.query(func.count(Lead.id))
         .filter(Lead.created_at >= cutoff)

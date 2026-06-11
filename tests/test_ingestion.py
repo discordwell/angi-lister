@@ -2,7 +2,7 @@
 
 import uuid
 
-from app.models import Lead, WebhookReceipt, LeadEvent, OutboundMessage
+from app.models import WebhookReceipt, LeadEvent, OutboundMessage
 from app.schemas.angi import AngiLeadPayload
 from app.services.ingestion import process_lead
 from tests.conftest import SAMPLE_LEAD

@@ -6,7 +6,6 @@ Auth header: Authorization: Bearer angi_<8hex>_<48hex>
 Keys are stored as SHA-256 hashes. The raw key is only returned once at creation.
 """
 
-import datetime as dt
 import hashlib
 import logging
 import secrets
@@ -17,6 +16,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal, set_tenant, get_bypass_db
+from app.utils import utcnow
 from app.models import ApiKey, Tenant
 from app.services.auth import COOKIE_NAME, validate_session
 
@@ -68,7 +68,7 @@ def validate_api_key(db: Session, raw_key: str) -> ApiKey | None:
     if record.revoked_at is not None:
         return None
 
-    record.last_used_at = dt.datetime.now(dt.UTC).replace(tzinfo=None)
+    record.last_used_at = utcnow()
     db.flush()
     return record
 

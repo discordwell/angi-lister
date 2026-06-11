@@ -92,7 +92,7 @@ class TestTenantIsolation:
         pg_session.execute(text("SET LOCAL app.current_tenant = :tid"), {"tid": t_a.id})
 
         visible = pg_session.query(Lead).all()
-        visible_ids = {l.id for l in visible}
+        visible_ids = {lead.id for lead in visible}
         assert lead_a.id in visible_ids
         assert lead_b.id not in visible_ids
 
@@ -105,7 +105,7 @@ class TestTenantIsolation:
         pg_session.execute(text("SET LOCAL app.current_tenant = '__all__'"))
 
         visible = pg_session.query(Lead).all()
-        visible_ids = {l.id for l in visible}
+        visible_ids = {lead.id for lead in visible}
         assert lead_a.id in visible_ids
         assert lead_b.id in visible_ids
 

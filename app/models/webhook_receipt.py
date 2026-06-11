@@ -6,6 +6,7 @@ from sqlalchemy import JSON as JSONB  # JSON works on both Postgres and SQLite
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class WebhookReceipt(Base):
@@ -13,7 +14,7 @@ class WebhookReceipt(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     received_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, nullable=False, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, nullable=False, default=utcnow
     )
     headers: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     raw_body: Mapped[dict] = mapped_column(JSONB, nullable=False)

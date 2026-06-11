@@ -60,6 +60,9 @@ The webhook handler detects schema drift (missing/extra fields) on every receipt
 
 Config: `ALERT_EMAIL`, `ALERT_ERROR_THRESHOLD` (default 3), `ALERT_WINDOW_MINUTES` (default 60).
 
+### Naive-UTC Timestamps
+All `DateTime` columns are `timestamp without time zone`, and every timestamp in the app is a **naive UTC** datetime produced by `app.utils.utcnow()`. Both backends return naive values on read (PostgreSQL by definition; SQLite's dialect drops UTC offsets when parsing), so writing aware datetimes creates values that don't compare cleanly with what comes back. `tests/test_time_convention.py` enforces the convention (model defaults must be naive; `dt.datetime.now(dt.UTC)` is banned outside `app/utils.py`).
+
 ## Data Model
 
 - **tenants** — Business identity, branding, email templates (no RLS — lookup table)

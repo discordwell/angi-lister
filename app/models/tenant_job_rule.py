@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class TenantJobRule(Base):
@@ -17,7 +18,7 @@ class TenantJobRule(Base):
     category_pattern: Mapped[str] = mapped_column(String, nullable=False)
     rule_type: Mapped[str] = mapped_column(String, nullable=False)  # whitelist | blacklist | wantlist
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
 
     tenant = relationship("Tenant", back_populates="job_rules")

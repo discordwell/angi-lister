@@ -14,7 +14,6 @@ import argparse
 import json
 import random
 import string
-import sys
 import uuid
 
 import httpx

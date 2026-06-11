@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class ApiKey(Base):
@@ -21,7 +22,7 @@ class ApiKey(Base):
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
 
     tenant = relationship("Tenant", backref="api_keys")

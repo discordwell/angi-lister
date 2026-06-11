@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models import GeocodeCache
 from app.services.geocoding import geocode_address
+from app.utils import utcnow
 
 
 class TestGeocodingCache:
@@ -16,8 +17,8 @@ class TestGeocodingCache:
             lat=39.7800,
             lng=-86.1500,
             provider="here",
-            created_at=dt.datetime.now(dt.UTC),
-            expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(days=90),
+            created_at=utcnow(),
+            expires_at=utcnow() + dt.timedelta(days=90),
         ))
         db.flush()
 
@@ -31,8 +32,8 @@ class TestGeocodingCache:
             lat=39.7800,
             lng=-86.1500,
             provider="here",
-            created_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=100),
-            expires_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=10),
+            created_at=utcnow() - dt.timedelta(days=100),
+            expires_at=utcnow() - dt.timedelta(days=10),
         ))
         db.flush()
 

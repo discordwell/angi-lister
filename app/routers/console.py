@@ -14,11 +14,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.db.session import get_bypass_db, SessionLocal, set_tenant
+from app.utils import utcnow
 from app.templates_config import templates
 from app.models import (
-    ConsoleSession, Lead, Tenant, WebhookReceipt, LeadEvent,
+    ConsoleSession, Tenant, WebhookReceipt, LeadEvent,
     TenantHomeBase, TenantJobRule, TenantSpecial, TenantFile,
 )
 from app.schemas.angi import AngiLeadPayload
@@ -121,7 +121,7 @@ def _parse_period(period: str) -> tuple[dt.datetime | None, dt.datetime | None, 
 
     Supported: "all", "today", "7d", "30d", "YYYY-MM-DD" (specific day), "YYYY-MM" (specific month).
     """
-    now = dt.datetime.now(dt.UTC).replace(tzinfo=None)
+    now = utcnow()
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     if period == "all":
@@ -255,7 +255,7 @@ async def console_set_outcome(
 @router.get("/duplicates", response_class=HTMLResponse)
 def console_duplicates(
     request: Request,
-    period: str = Query("all", regex=r"^(all|today|7d|30d|\d{4}-\d{2}-\d{2}|\d{4}-\d{2})$"),
+    period: str = Query("all", pattern=r"^(all|today|7d|30d|\d{4}-\d{2}-\d{2}|\d{4}-\d{2})$"),
     db: Session = Depends(get_console_db),
     session: ConsoleSession = Depends(_require_session),
 ):
@@ -748,13 +748,14 @@ def console_delete_signature(
 @router.get("/events")
 async def console_events(
     request: Request,
+    once: bool = Query(False, description="Poll a single time and close (for tests/debugging)"),
     session: ConsoleSession = Depends(_require_session),
 ):
     """Server-Sent Events endpoint for real-time lead event updates."""
     tenant_id = session.tenant_id
 
     async def event_generator():
-        last_seen = dt.datetime.now(dt.UTC)
+        last_seen = utcnow()
         while True:
             if await request.is_disconnected():
                 break
@@ -784,6 +785,8 @@ async def console_events(
                     last_seen = event.created_at
             finally:
                 db.close()
+            if once:
+                break
             await asyncio.sleep(1)
 
     return StreamingResponse(

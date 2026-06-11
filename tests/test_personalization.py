@@ -6,9 +6,10 @@ import uuid
 import pytest
 from sqlalchemy.orm import Session
 
+from app.utils import utcnow
 from app.models import (
     Lead, LeadEvent, OutboundMessage, Tenant, AngiMapping,
-    TenantHomeBase, TenantJobRule, TenantSpecial, GeocodeCache,
+    TenantHomeBase, TenantJobRule, TenantSpecial,
 )
 from app.services.personalization import (
     _check_repeat_customer,
@@ -167,7 +168,7 @@ class TestRepeatCustomer:
             urgency="This Week",
             raw_payload={},
             fingerprint="x",
-            created_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=2),
+            created_at=utcnow() - dt.timedelta(days=2),
         )
         db.add(prior)
         db.flush()
@@ -188,7 +189,7 @@ class TestRepeatCustomer:
             phone="5550000000",
             raw_payload={},
             fingerprint="x",
-            created_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=10),
+            created_at=utcnow() - dt.timedelta(days=10),
         )
         db.add(old)
         db.flush()
@@ -358,7 +359,7 @@ class TestPersonalizePipeline:
             first_name="Alice", last_name="Smith",
             email="alice@example.com", phone="5550000000",
             raw_payload={}, fingerprint="x",
-            created_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
+            created_at=utcnow() - dt.timedelta(days=1),
         )
         db.add(prior)
         db.flush()

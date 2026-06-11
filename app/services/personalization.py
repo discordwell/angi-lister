@@ -17,10 +17,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import Lead, LeadEvent, OutboundMessage, Tenant, TenantJobRule, TenantSpecial, TenantFile
 from app.models.tenant_home_base import TenantHomeBase
-from app.services.email import populate_outbound
 from app.services.geo_utils import haversine_miles
 from app.services.geocoding import geocode_address
-from app.services.llm import LLMError, generate_email
+from app.services.llm import generate_email
+from app.utils import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class PersonalizationContext:
 
 def _check_repeat_customer(db: Session, lead: Lead, tenant: Tenant) -> list[Lead]:
     """Find leads with same email OR phone from this tenant in the last 7 days."""
-    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=7)
+    cutoff = utcnow() - dt.timedelta(days=7)
     return (
         db.query(Lead)
         .filter(
@@ -227,7 +227,7 @@ RULES:
 def _build_user_prompt(ctx: PersonalizationContext) -> str:
     lead = ctx.lead
     parts = [
-        f"LEAD DETAILS:",
+        "LEAD DETAILS:",
         f"- Name: {lead.first_name} {lead.last_name}",
         f"- Category: {lead.category}",
         f'- Description: "{lead.description}"',

@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class TenantFile(Base):
@@ -20,7 +21,7 @@ class TenantFile(Base):
     data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     purpose: Mapped[str] = mapped_column(String, nullable=False, default="general")
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
 
     tenant = relationship("Tenant", backref="files")

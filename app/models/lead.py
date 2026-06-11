@@ -6,6 +6,7 @@ from sqlalchemy import JSON as JSONB  # JSON works on both Postgres and SQLite
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class Lead(Base):
@@ -42,11 +43,11 @@ class Lead(Base):
     geocode_source: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
     updated_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC),
-        onupdate=lambda: dt.datetime.now(dt.UTC),
+        DateTime, default=utcnow,
+        onupdate=utcnow,
     )
 
     tenant = relationship("Tenant", back_populates="leads")

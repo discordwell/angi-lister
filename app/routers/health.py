@@ -5,6 +5,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_bypass_db
+from app.utils import utcnow
 from app.models import OutboundMessage
 from app.schemas.api import HealthResponse, ReadyResponse, SchemaHealthResponse
 
@@ -26,7 +27,7 @@ def readyz(db: Session = Depends(get_bypass_db)):
 
     # Worker heartbeat: check if there are stale pending messages
     # (pending for over 5 minutes means the worker is likely down)
-    five_min_ago = dt.datetime.now(dt.UTC) - dt.timedelta(minutes=5)
+    five_min_ago = utcnow() - dt.timedelta(minutes=5)
     stale_pending = (
         db.query(func.count(OutboundMessage.id))
         .filter(

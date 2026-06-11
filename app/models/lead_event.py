@@ -6,6 +6,7 @@ from sqlalchemy import JSON as JSONB  # JSON works on both Postgres and SQLite
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class LeadEvent(Base):
@@ -24,7 +25,7 @@ class LeadEvent(Base):
         String, ForeignKey("tenants.id"), nullable=True, index=True
     )
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, nullable=False, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, nullable=False, default=utcnow
     )
 
     lead = relationship("Lead", back_populates="events")

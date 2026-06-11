@@ -5,7 +5,6 @@ When resend_api_key is empty, emails are marked as simulated and logged
 instead of sent.
 """
 
-import datetime as dt
 import logging
 from pathlib import Path
 
@@ -15,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Lead, OutboundMessage, Tenant, LeadEvent
+from app.utils import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ def _template_context(lead: Lead, tenant: Tenant) -> dict:
         "description": lead.description,
         "tenant_phone": tenant.phone,
         "custom_body": custom_body,
-        "year": dt.datetime.now(dt.UTC).year,
+        "year": utcnow().year,
     }
 
 
@@ -131,7 +131,7 @@ def send_outbound_message(db: Session, msg: OutboundMessage) -> bool:
     # Simulated sends — log and mark sent without hitting the API
     if msg.is_simulated or not settings.resend_api_key:
         msg.status = "sent"
-        msg.sent_at = dt.datetime.now(dt.UTC)
+        msg.sent_at = utcnow()
         msg.provider_id = "simulated"
         db.flush()
         log.info("Simulated send for message %s to %s", msg.id, msg.recipient)
@@ -157,7 +157,7 @@ def send_outbound_message(db: Session, msg: OutboundMessage) -> bool:
         resp.raise_for_status()
         data = resp.json()
         msg.status = "sent"
-        msg.sent_at = dt.datetime.now(dt.UTC)
+        msg.sent_at = utcnow()
         msg.provider_id = data.get("id", "unknown")
         db.flush()
         log.info("Sent message %s via Resend (provider_id=%s)", msg.id, msg.provider_id)

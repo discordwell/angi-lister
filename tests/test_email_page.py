@@ -4,8 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.models import (
-    ConsoleSession, Tenant, AngiMapping,
-    TenantHomeBase, TenantJobRule, TenantSpecial,
+    ConsoleSession, Tenant,
 )
 from app.services.auth import _hash
 

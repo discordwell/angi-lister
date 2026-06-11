@@ -2,9 +2,9 @@
 
 import uuid
 
-from app.models import Lead, DuplicateMatch, WebhookReceipt
+from app.models import DuplicateMatch, WebhookReceipt
 from app.schemas.angi import AngiLeadPayload
-from app.services.duplicates import compute_fingerprint, check_duplicates
+from app.services.duplicates import compute_fingerprint
 from app.services.ingestion import process_lead
 from tests.conftest import SAMPLE_LEAD
 
@@ -54,7 +54,7 @@ class TestDuplicateDetection:
         assert match.score >= 0.4
 
     def test_different_consumer_not_flagged(self, seeded_db):
-        lead1 = self._create_lead(seeded_db)
+        self._create_lead(seeded_db)
         lead2 = self._create_lead(
             seeded_db,
             Email="different@example.com",
@@ -73,7 +73,7 @@ class TestDuplicateDetection:
         assert match is None
 
     def test_evidence_has_match_details(self, seeded_db):
-        lead1 = self._create_lead(seeded_db)
+        self._create_lead(seeded_db)
         lead2 = self._create_lead(seeded_db)
 
         match = (
@@ -86,7 +86,7 @@ class TestDuplicateDetection:
         assert "score" in match.evidence
 
     def test_email_only_match_scores_0_4(self, seeded_db):
-        lead1 = self._create_lead(seeded_db)
+        self._create_lead(seeded_db)
         # Same email, different phone and address
         lead2 = self._create_lead(
             seeded_db,

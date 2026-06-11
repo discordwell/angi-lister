@@ -8,6 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Lead, LeadEvent, OutboundMessage, DuplicateMatch, WebhookReceipt
+from app.utils import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def get_metrics_summary(db: Session, tenant_id: str | None = None) -> dict:
       - parse_failure_count
     """
 
-    now = dt.datetime.now(dt.UTC)
+    now = utcnow()
     h24_ago = now - dt.timedelta(hours=24)
 
     # Base filter for tenant scoping
@@ -174,7 +175,7 @@ def get_recent_leads(
 
 def get_daily_breakdown(db: Session, days: int = 14, tenant_id: str | None = None) -> list[dict]:
     """Return lead counts grouped by day for the last N days."""
-    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=days)
+    cutoff = utcnow() - dt.timedelta(days=days)
 
     q = db.query(Lead).filter(Lead.created_at >= cutoff)
     if tenant_id:
@@ -199,7 +200,7 @@ def get_daily_breakdown(db: Session, days: int = 14, tenant_id: str | None = Non
     # Build sorted list with all days in range (including zeros)
     result = []
     for i in range(days):
-        d = (dt.datetime.now(dt.UTC) - dt.timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        d = (utcnow() - dt.timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
         result.append({
             "date": d,
             "total": day_counts.get(d, 0),

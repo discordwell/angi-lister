@@ -21,7 +21,6 @@ from app.services.metrics import (
 )
 
 from app.config import settings
-from app.templates_config import templates
 
 log = logging.getLogger(__name__)
 
@@ -275,7 +274,7 @@ def api_test_cleanup(
         .filter(Lead.correlation_id.like(f"{CLEANUP_PREFIX}%"))
         .all()
     )
-    lead_ids = [l.id for l in test_leads]
+    lead_ids = [lead.id for lead in test_leads]
 
     # Find test receipts by correlation_id prefix
     test_receipts = (

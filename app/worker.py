@@ -13,13 +13,13 @@ Configuration:
 
 import logging
 import signal
-import sys
 import time
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import SessionLocal, set_tenant
+from app.utils import utcnow
 from app.models import OutboundMessage
 from app.services.email import process_outbound_message
 
@@ -78,7 +78,7 @@ def _recover_stuck_messages(db: Session) -> int:
     """Reset messages stuck in 'generating' for more than 60s back to 'pending'."""
     import datetime as dt
 
-    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=60)
+    cutoff = utcnow() - dt.timedelta(seconds=60)
     stuck = (
         db.query(OutboundMessage)
         .filter(

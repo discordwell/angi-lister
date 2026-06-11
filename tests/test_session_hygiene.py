@@ -162,6 +162,53 @@ class TestAdminSessionHygiene:
             db.close()
 
 
+class TestConsoleEventStream:
+    def test_sse_stream_yields_new_events(self, real_app_client):
+        """The /console/events poll loop compares naive-UTC timestamps: events
+        created after the stream opens must be emitted on the first poll."""
+        import datetime as dt
+        import json
+
+        from app.models import ConsoleSession, LeadEvent
+        from app.services.auth import COOKIE_NAME, SESSION_PREFIX, _hash, _sign_cookie
+        from app.utils import utcnow
+
+        client, _, _, _ = real_app_client
+
+        # Operator console session (tenant_id=None) + matching signed cookie.
+        raw_token = SESSION_PREFIX + "hygiene-sse-token"
+        expires_at = utcnow() + dt.timedelta(days=1)
+        db = SessionLocal()
+        try:
+            db.add(ConsoleSession(
+                tenant_id=None, email="operator@example.com",
+                session_token_hash=_hash(raw_token), expires_at=expires_at,
+            ))
+            # Future-dated so it is strictly newer than the stream's last_seen
+            # regardless of connection latency.
+            db.add(LeadEvent(
+                event_type="sse_probe", payload={"k": "v"},
+                created_at=utcnow() + dt.timedelta(seconds=60),
+            ))
+            db.commit()
+        finally:
+            db.close()
+        cookie = _sign_cookie({
+            "token": raw_token, "email": "operator@example.com",
+            "tenant_id": None, "exp": int(expires_at.timestamp() * 1000),
+        })
+
+        client.cookies.set(COOKIE_NAME, cookie)
+        resp = client.get("/console/events", params={"once": "1"})
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        data_lines = [line for line in resp.text.splitlines() if line.startswith("data: ")]
+        assert data_lines, f"no SSE events in response: {resp.text!r}"
+        event = json.loads(data_lines[0][len("data: "):])
+        assert event["event_type"] == "sse_probe"
+        assert event["payload"] == {"k": "v"}
+
+
 class TestSetTenantScoping:
     def test_noop_on_sqlite(self):
         db = SessionLocal()

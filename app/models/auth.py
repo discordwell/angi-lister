@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class MagicLinkToken(Base):
@@ -17,7 +18,7 @@ class MagicLinkToken(Base):
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
     consumed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
 
 
@@ -31,10 +32,10 @@ class ConsoleSession(Base):
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     last_seen_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
 
     tenant = relationship("Tenant")

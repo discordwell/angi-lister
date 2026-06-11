@@ -6,6 +6,7 @@ from sqlalchemy import JSON as JSONB  # JSON works on both Postgres and SQLite
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class DuplicateMatch(Base):
@@ -20,7 +21,7 @@ class DuplicateMatch(Base):
     score: Mapped[float] = mapped_column(Float, nullable=False)
     evidence: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
 
     lead = relationship("Lead", foreign_keys=[lead_id], back_populates="duplicate_matches")

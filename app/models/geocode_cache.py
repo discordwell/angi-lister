@@ -4,6 +4,7 @@ from sqlalchemy import DateTime, Float, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.utils import utcnow
 
 
 class GeocodeCache(Base):
@@ -15,6 +16,6 @@ class GeocodeCache(Base):
     full_address: Mapped[str | None] = mapped_column(String, nullable=True)
     provider: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.UTC)
+        DateTime, default=utcnow
     )
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)

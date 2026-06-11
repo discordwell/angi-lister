@@ -11,12 +11,9 @@ Run locally:  pytest tests/test_angi_contract.py -v
 Run against live:  python -m tests.test_angi_contract --url https://angi.discordwell.com
 """
 
-import json
 import uuid
 
-import pytest
 
-from tests.conftest import SAMPLE_LEAD
 
 
 # ── The exact example payload from the Angi PDF spec (page 3) ────────────────

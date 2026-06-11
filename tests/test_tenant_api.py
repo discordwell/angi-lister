@@ -104,7 +104,7 @@ class TestTenantLeads:
         resp = client.get("/api/v1/tenant/leads", headers=_headers(key))
         assert resp.status_code == 200
         leads = resp.json()
-        assert all(l["tenant_name"] == "Test Tenant" for l in leads)
+        assert all(lead["tenant_name"] == "Test Tenant" for lead in leads)
 
     def test_lead_detail_wrong_tenant_404(self, tenant_client, db):
         client, tenant, key = tenant_client

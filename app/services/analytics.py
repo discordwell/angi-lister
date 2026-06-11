@@ -2,22 +2,23 @@ import datetime as dt
 import logging
 from statistics import median
 
-from sqlalchemy import func, case
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Lead, LeadEvent, OutboundMessage, DuplicateMatch, WebhookReceipt, Tenant
+from app.utils import utcnow
 
 log = logging.getLogger(__name__)
 
 
 def _cutoff(days: int) -> dt.datetime:
     """Return a naive UTC datetime `days` ago for PostgreSQL comparison."""
-    return dt.datetime.now(dt.UTC).replace(tzinfo=None) - dt.timedelta(days=days)
+    return utcnow() - dt.timedelta(days=days)
 
 
 def _date_range(days: int) -> list[str]:
     """Return a list of ISO date strings from `days` ago to today."""
-    today = dt.datetime.now(dt.UTC).replace(tzinfo=None).date()
+    today = utcnow().date()
     return [(today - dt.timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
 
 
@@ -347,7 +348,7 @@ def get_tenant_comparison(db: Session, days: int = 30) -> list[dict]:
 
 def get_system_health(db: Session) -> dict:
     """System health snapshot — always uses a 24-hour window."""
-    cutoff_24h = dt.datetime.now(dt.UTC).replace(tzinfo=None) - dt.timedelta(hours=24)
+    cutoff_24h = utcnow() - dt.timedelta(hours=24)
 
     parse_failures_24h = (
         db.query(func.count(WebhookReceipt.id))

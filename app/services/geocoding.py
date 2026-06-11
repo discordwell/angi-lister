@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import GeocodeCache
+from app.utils import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -35,9 +36,9 @@ def geocode_address(
         return None
 
     # --- Cache lookup ---------------------------------------------------------
-    now = dt.datetime.now(dt.UTC)
+    now = utcnow()
     cached = db.query(GeocodeCache).filter(GeocodeCache.postal_code == postal_code).first()
-    if cached and cached.expires_at.replace(tzinfo=dt.UTC) > now:
+    if cached and cached.expires_at > now:
         return (cached.lat, cached.lng)
 
     # --- HERE API call --------------------------------------------------------
