@@ -27,11 +27,24 @@ def compute_fingerprint(email: str, phone: str, address: str) -> str:
     return f"{_normalize_email(email)}|{_normalize_phone(phone)}|{_normalize_address(address)}"
 
 
+def _present_and_equal(a: str, b: str) -> bool:
+    """True only when both normalized values are non-blank and identical.
+
+    A blank value must never count as a match: two unrelated leads that both omit
+    (say) phone and address would otherwise score phone_match + address_match =
+    0.6 and be flagged as duplicates of each other — polluting the rebate-claim
+    export with false positives. Requiring the value to be present means an empty
+    field contributes nothing to the score. (Equality already implies ``b`` is
+    non-blank whenever ``a`` is, so one presence check is sufficient.)
+    """
+    return bool(a) and a == b
+
+
 def check_duplicates(db: Session, lead: Lead) -> DuplicateMatch | None:
     """Check for duplicate leads within the same tenant by fingerprint components.
 
     Scoring: email_match (0.4) + phone_match (0.3) + address_match (0.3).
-    Threshold: >= 0.4 to flag as duplicate.
+    Threshold: >= 0.4 to flag as duplicate. Blank fields never count as a match.
     """
     if not lead.tenant_id:
         return None
@@ -63,9 +76,9 @@ def check_duplicates(db: Session, lead: Lead) -> DuplicateMatch | None:
             f"{existing.address_line1 or ''} {existing.city or ''} {existing.state or ''} {existing.postal_code or ''}"
         )
 
-        email_match = ex_email == norm_email
-        phone_match = ex_phone == norm_phone
-        address_match = ex_address == norm_address
+        email_match = _present_and_equal(norm_email, ex_email)
+        phone_match = _present_and_equal(norm_phone, ex_phone)
+        address_match = _present_and_equal(norm_address, ex_address)
 
         score = (0.4 if email_match else 0.0) + (0.3 if phone_match else 0.0) + (0.3 if address_match else 0.0)
 

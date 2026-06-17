@@ -5,7 +5,7 @@ import logging
 from statistics import median
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import Lead, LeadEvent, OutboundMessage, DuplicateMatch, WebhookReceipt
 from app.utils import utcnow
@@ -154,7 +154,15 @@ def get_recent_leads(
 
     total: int = q.count()
 
-    leads = q.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
+    # Eager-load the tenant: the loop below reads lead.tenant.name for every row,
+    # which would otherwise fire one SELECT per lead (N+1).
+    leads = (
+        q.options(joinedload(Lead.tenant))
+        .order_by(Lead.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     results = []
     for lead in leads:
         tenant_name = lead.tenant.name if lead.tenant else None
@@ -303,7 +311,15 @@ def get_duplicate_pairs(
         q = q.filter(DuplicateMatch.created_at >= date_from)
     if date_to:
         q = q.filter(DuplicateMatch.created_at < date_to)
-    matches = q.order_by(DuplicateMatch.created_at.desc()).limit(limit).all()
+    # Eager-load both lead sides: the loop reads names/emails off m.lead and
+    # m.original, which would otherwise fire two SELECTs per row (N+1). The
+    # export path calls this with limit=10000.
+    matches = (
+        q.options(joinedload(DuplicateMatch.lead), joinedload(DuplicateMatch.original))
+        .order_by(DuplicateMatch.created_at.desc())
+        .limit(limit)
+        .all()
+    )
     results = []
     for m in matches:
         lead = m.lead

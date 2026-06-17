@@ -106,3 +106,45 @@ class TestDuplicateDetection:
         assert match.score == 0.4
         assert match.evidence["email_match"] is True
         assert match.evidence["phone_match"] is False
+
+    def test_blank_phone_and_address_not_matched(self, seeded_db):
+        """Two unrelated leads (different emails) that both omit phone and
+        address must NOT be flagged as duplicates. Before the fix, blank == blank
+        scored phone_match (0.3) + address_match (0.3) = 0.6, a false positive
+        that polluted the rebate-claim export."""
+        blank_addr = {
+            "AddressFirstLine": "", "AddressSecondLine": "",
+            "City": "", "State": "", "PostalCode": "",
+        }
+        self._create_lead(
+            seeded_db, Email="alice@example.com", PhoneNumber="", PostalAddress=blank_addr
+        )
+        lead2 = self._create_lead(
+            seeded_db, Email="bob@example.com", PhoneNumber="", PostalAddress=blank_addr
+        )
+
+        match = (
+            seeded_db.query(DuplicateMatch)
+            .filter(DuplicateMatch.lead_id == lead2.id)
+            .first()
+        )
+        assert match is None
+
+    def test_blank_email_does_not_contribute_to_score(self, seeded_db):
+        """A blank email shared by two leads must not count as an email match.
+        Here phone and address are identical (0.3 + 0.3 = 0.6) so the pair is
+        still flagged, but the score must be 0.6, not 1.0, and email_match
+        must be False."""
+        self._create_lead(seeded_db, Email="")
+        lead2 = self._create_lead(seeded_db, Email="")
+
+        match = (
+            seeded_db.query(DuplicateMatch)
+            .filter(DuplicateMatch.lead_id == lead2.id)
+            .first()
+        )
+        assert match is not None
+        assert match.score == 0.6
+        assert match.evidence["email_match"] is False
+        assert match.evidence["phone_match"] is True
+        assert match.evidence["address_match"] is True
