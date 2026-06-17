@@ -35,16 +35,18 @@
       </tr>
       <tr>
         <td class="body-content">
-          <p class="greeting">Hi {{ first_name }},</p>
-          {# custom_body is the tenant's intro_template already rendered (lead fields
-             escaped by that inner autoescaping render). It is deliberately printed
-             WITHOUT |safe. Do NOT add |safe here: lead first_name/category/description
-             come from the Angi webhook, and rendering this Markup-safe without
-             guaranteeing those fields are escaped first turns this into a stored-XSS
-             sink. See services/email.py::_template_context. #}
-          {% if custom_body %}
-          {{ custom_body }}
+          {# custom_body_html is the tenant's intro_template, already rendered with
+             autoescape ON (so webhook lead fields are escaped) and wrapped in Markup
+             by services/email.py::_render_intro_snippet. It is safe to emit verbatim
+             precisely because that render escaped the untrusted fields and only
+             structural <p>/<br> tags were added afterward — DO NOT feed raw lead
+             data here without escaping it first, or this becomes a stored-XSS sink.
+             The tenant template supplies its own greeting, so the default greeting
+             below lives in the else branch to avoid greeting twice. #}
+          {% if custom_body_html %}
+          {{ custom_body_html }}
           {% else %}
+          <p class="greeting">Hi {{ first_name }},</p>
           <p>
             Thanks for reaching out{{ " about " + category if category else "" }}!
             We received your request and wanted to let you know that our team is already on it.

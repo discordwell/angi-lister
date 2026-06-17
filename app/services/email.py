@@ -9,7 +9,8 @@ import logging
 from pathlib import Path
 
 import httpx
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from markupsafe import Markup
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -19,10 +20,18 @@ from app.utils import utcnow
 log = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "email"
+# Autoescape keys off the template name: intro.html is escaped, intro.txt is not.
+# A plain-text email must never carry HTML entities (a "&" should stay "&", not
+# become "&amp;"), so the .txt template renders without escaping.
 _jinja_env = Environment(
     loader=FileSystemLoader(str(TEMPLATE_DIR)),
-    autoescape=True,
+    autoescape=select_autoescape(("html", "xml")),
 )
+# The tenant's intro_template snippet is rendered once per context. The HTML
+# render escapes webhook-supplied lead fields (autoescape on); the plain-text
+# render leaves them raw. overlay() shares this env's loader/cache.
+_snippet_html_env = _jinja_env.overlay(autoescape=True)
+_snippet_text_env = _jinja_env.overlay(autoescape=False)
 
 RESEND_API_URL = "https://api.resend.com/emails"
 MAX_ATTEMPTS = 3
@@ -57,24 +66,59 @@ def send_email(recipient: str, subject: str, body_html: str, body_text: str,
 # Template rendering
 # ---------------------------------------------------------------------------
 
+def _paragraphs_to_html(escaped: str) -> str:
+    """Turn blank-line-separated, already-escaped text into <p>/<br> markup.
+
+    Blocks separated by a blank line become <p> elements; single newlines within
+    a block become <br>. The input MUST already be HTML-escaped — this only adds
+    the structural tags, so it can never introduce markup from untrusted fields.
+
+    CRLF/CR (which a webhook lead field can carry into the rendered string, e.g. a
+    multi-line Description) is normalized to LF first so paragraph splitting works
+    and no stray carriage returns survive.
+    """
+    escaped = escaped.replace("\r\n", "\n").replace("\r", "\n")
+    blocks = [b.strip() for b in escaped.strip().split("\n\n") if b.strip()]
+    return "".join("<p>" + b.replace("\n", "<br>") + "</p>" for b in blocks)
+
+
+def _render_intro_snippet(tenant: Tenant, lead: Lead) -> tuple[Markup | None, str | None]:
+    """Render the tenant's intro_template for the HTML and text email contexts.
+
+    Returns (html, text). intro_template is a tenant-authored Jinja2 string that
+    interpolates webhook-supplied lead fields, so it must be rendered once per
+    context rather than reused:
+    - HTML: lead fields are escaped (autoescape on), then blank lines become
+      <p>/<br>, then the result is wrapped in Markup so the outer autoescaping
+      template emits it verbatim instead of double-escaping it.
+    - text: lead fields are left raw — a plain-text email must not contain HTML
+      entities.
+
+    Returns (None, None) if the tenant has no template or rendering fails (the
+    caller then falls back to the default body baked into the templates).
+    """
+    if not tenant.intro_template:
+        return None, None
+
+    fields = dict(
+        first_name=lead.first_name,
+        last_name=lead.last_name,
+        category=lead.category,
+        description=lead.description,
+    )
+    try:
+        html_rendered = _snippet_html_env.from_string(tenant.intro_template).render(**fields)
+        text_rendered = _snippet_text_env.from_string(tenant.intro_template).render(**fields)
+    except Exception:
+        log.exception("Failed to render tenant intro_template for tenant %s", tenant.id)
+        return None, None
+
+    return Markup(_paragraphs_to_html(html_rendered)), text_rendered.strip()
+
+
 def _template_context(lead: Lead, tenant: Tenant) -> dict:
     """Build the Jinja2 context dict shared by HTML and text templates."""
-    custom_body = None
-    if tenant.intro_template:
-        # Render the tenant's custom body snippet (stored as a Jinja2 string).
-        # autoescape is on, so webhook-supplied lead fields are escaped here. The
-        # template prints {{ custom_body }} without |safe — see the warning in
-        # templates/email/intro.html before changing that.
-        try:
-            custom_tpl = _jinja_env.from_string(tenant.intro_template)
-            custom_body = custom_tpl.render(
-                first_name=lead.first_name,
-                last_name=lead.last_name,
-                category=lead.category,
-                description=lead.description,
-            )
-        except Exception:
-            log.exception("Failed to render tenant intro_template for tenant %s", tenant.id)
+    custom_body_html, custom_body_text = _render_intro_snippet(tenant, lead)
 
     return {
         "tenant_name": tenant.name,
@@ -84,7 +128,8 @@ def _template_context(lead: Lead, tenant: Tenant) -> dict:
         "category": lead.category,
         "description": lead.description,
         "tenant_phone": tenant.phone,
-        "custom_body": custom_body,
+        "custom_body_html": custom_body_html,
+        "custom_body_text": custom_body_text,
         "year": utcnow().year,
     }
 
