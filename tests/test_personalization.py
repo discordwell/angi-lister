@@ -197,6 +197,72 @@ class TestRepeatCustomer:
         result = _check_repeat_customer(db, lead, tenant)
         assert result == []
 
+    def _prior(self, db, tenant, *, email, phone, days=1, name="Alice"):
+        ld = Lead(
+            correlation_id=str(uuid.uuid4()),
+            tenant_id=tenant.id, al_account_id="999001", status="mapped",
+            first_name=name, last_name="Smith",
+            email=email, phone=phone,
+            raw_payload={}, fingerprint="x",
+            created_at=utcnow() - dt.timedelta(days=days),
+        )
+        db.add(ld)
+        db.flush()
+        return ld
+
+    def test_matches_prior_with_different_email_case(self, db, lead, tenant):
+        """A resubmission with different email casing must still be recognized.
+
+        Duplicate detection normalizes email before comparing, so the repeat-
+        customer check has to agree — otherwise a true resubmission goes
+        unrecognized and the consumer is sent a duplicate email. The prior here
+        carries a different phone so only the (normalized) email can match.
+        """
+        # lead.email == "alice@example.com"
+        prior = self._prior(db, tenant, email="Alice@Example.COM", phone="5550000000")
+        result = _check_repeat_customer(db, lead, tenant)
+        assert [r.id for r in result] == [prior.id]
+
+    def test_matches_prior_with_different_phone_format(self, db, lead, tenant):
+        """A resubmission with different phone formatting must still be recognized.
+
+        The prior carries a different email so only the (normalized) phone can
+        match: "(555) 999-1234" must equal the lead's "5559991234".
+        """
+        prior = self._prior(db, tenant, email="someone-else@example.com", phone="(555) 999-1234")
+        result = _check_repeat_customer(db, lead, tenant)
+        assert [r.id for r in result] == [prior.id]
+
+    def test_blank_phone_does_not_match_unrelated_lead(self, db, lead, tenant):
+        """Two unrelated consumers who both omit a phone are NOT repeat customers.
+
+        A blank field is not an identifier. Raw SQL equality matched "" == "",
+        so a stranger looked like a repeat customer — which can make the LLM SKIP
+        and suppress a legitimate first-contact email to a real new lead.
+        """
+        lead.email = "current@example.com"
+        lead.phone = ""
+        db.flush()
+        self._prior(db, tenant, email="unrelated@example.com", phone="", name="Stranger")
+        assert _check_repeat_customer(db, lead, tenant) == []
+
+    def test_blank_email_does_not_match_unrelated_lead(self, db, lead, tenant):
+        """Same guard for a shared blank email (different non-blank phones)."""
+        lead.email = ""
+        lead.phone = "5551112222"
+        db.flush()
+        self._prior(db, tenant, email="", phone="5559998888", name="Stranger")
+        assert _check_repeat_customer(db, lead, tenant) == []
+
+    def test_no_identifier_returns_empty(self, db, lead, tenant):
+        """A lead with neither email nor phone has nothing to match on — even
+        against a prior that itself omits a field (where raw "" == "" matched)."""
+        lead.email = ""
+        lead.phone = ""
+        db.flush()
+        self._prior(db, tenant, email="other@example.com", phone="", name="Other")
+        assert _check_repeat_customer(db, lead, tenant) == []
+
 
 # ── Pass 2: Job rules ────────────────────────────────────────────────────────
 

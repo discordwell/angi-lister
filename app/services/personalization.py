@@ -12,12 +12,12 @@ import html
 import logging
 from dataclasses import dataclass, field
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Lead, LeadEvent, OutboundMessage, Tenant, TenantJobRule, TenantSpecial, TenantFile
 from app.models.tenant_home_base import TenantHomeBase
+from app.services.duplicates import normalize_email, normalize_phone, present_and_equal
 from app.services.geo_utils import haversine_miles
 from app.services.geocoding import geocode_address
 from app.services.llm import generate_email
@@ -54,20 +54,50 @@ class PersonalizationContext:
 # ── Pass 1: Repeat customer check ────────────────────────────────────────────
 
 def _check_repeat_customer(db: Session, lead: Lead, tenant: Tenant) -> list[Lead]:
-    """Find leads with same email OR phone from this tenant in the last 7 days."""
+    """Find prior leads from the SAME consumer for this tenant in the last 7 days.
+
+    "Same consumer" is decided with the exact normalized email/phone match that
+    duplicate detection uses (``present_and_equal``), so the two stay consistent:
+    - A blank field never counts. Raw SQL equality matched ``"" == ""``, so two
+      unrelated consumers who both omit a phone (a valid Angi payload) looked like
+      repeat customers — which could make the LLM SKIP and suppress a legitimate
+      first-contact email to a real new lead.
+    - Matching is case/format-insensitive (``Bob@X.com`` == ``bob@x.com``,
+      ``"(555) 433-2646"`` == ``"5554332646"``). Raw equality missed these, so a
+      true resubmission went unrecognized and the consumer got a duplicate email —
+      even though duplicate detection (which normalizes) had already flagged it.
+
+    Because phone normalization (stripping non-alphanumerics) isn't portable in
+    SQL, candidates are loaded for the tenant within the 7-day window and matched
+    in Python. The window bounds the scan; duplicate detection already does an
+    unbounded per-tenant scan, so this is consistent and strictly tighter.
+    """
+    norm_email = normalize_email(lead.email)
+    norm_phone = normalize_phone(lead.phone)
+    if not norm_email and not norm_phone:
+        return []  # no usable identifier — nothing to match on
+
     cutoff = utcnow() - dt.timedelta(days=7)
-    return (
+    candidates = (
         db.query(Lead)
         .filter(
             Lead.tenant_id == tenant.id,
             Lead.id != lead.id,
             Lead.created_at >= cutoff,
-            or_(Lead.email == lead.email, Lead.phone == lead.phone),
         )
         .order_by(Lead.created_at.desc())
-        .limit(5)
         .all()
     )
+
+    matches: list[Lead] = []
+    for cand in candidates:
+        if present_and_equal(norm_email, normalize_email(cand.email)) or present_and_equal(
+            norm_phone, normalize_phone(cand.phone)
+        ):
+            matches.append(cand)
+            if len(matches) >= 5:
+                break
+    return matches
 
 
 # ── Pass 2: Job desirability ─────────────────────────────────────────────────

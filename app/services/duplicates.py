@@ -10,11 +10,16 @@ from app.models import Lead, DuplicateMatch, LeadEvent
 log = logging.getLogger(__name__)
 
 
-def _normalize_email(email: str) -> str:
+# These contact-normalization helpers are the canonical "is this the same
+# consumer" primitives. They are public because the personalization engine's
+# repeat-customer check (services/personalization.py) must decide sameness the
+# exact same way duplicate detection does — otherwise the two disagree (a lead
+# flagged as a duplicate but not recognized as a repeat customer, or vice versa).
+def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-def _normalize_phone(phone: str) -> str:
+def normalize_phone(phone: str) -> str:
     return re.sub(r"[^a-z0-9]", "", phone.strip().lower())
 
 
@@ -24,10 +29,10 @@ def _normalize_address(address: str) -> str:
 
 def compute_fingerprint(email: str, phone: str, address: str) -> str:
     """Deterministic fingerprint: normalized email|phone|address."""
-    return f"{_normalize_email(email)}|{_normalize_phone(phone)}|{_normalize_address(address)}"
+    return f"{normalize_email(email)}|{normalize_phone(phone)}|{_normalize_address(address)}"
 
 
-def _present_and_equal(a: str, b: str) -> bool:
+def present_and_equal(a: str, b: str) -> bool:
     """True only when both normalized values are non-blank and identical.
 
     A blank value must never count as a match: two unrelated leads that both omit
@@ -49,8 +54,8 @@ def check_duplicates(db: Session, lead: Lead) -> DuplicateMatch | None:
     if not lead.tenant_id:
         return None
 
-    norm_email = _normalize_email(lead.email)
-    norm_phone = _normalize_phone(lead.phone)
+    norm_email = normalize_email(lead.email)
+    norm_phone = normalize_phone(lead.phone)
     norm_address = _normalize_address(
         f"{lead.address_line1 or ''} {lead.city or ''} {lead.state or ''} {lead.postal_code or ''}"
     )
@@ -70,15 +75,15 @@ def check_duplicates(db: Session, lead: Lead) -> DuplicateMatch | None:
     best_evidence: dict = {}
 
     for existing in existing_leads:
-        ex_email = _normalize_email(existing.email)
-        ex_phone = _normalize_phone(existing.phone)
+        ex_email = normalize_email(existing.email)
+        ex_phone = normalize_phone(existing.phone)
         ex_address = _normalize_address(
             f"{existing.address_line1 or ''} {existing.city or ''} {existing.state or ''} {existing.postal_code or ''}"
         )
 
-        email_match = _present_and_equal(norm_email, ex_email)
-        phone_match = _present_and_equal(norm_phone, ex_phone)
-        address_match = _present_and_equal(norm_address, ex_address)
+        email_match = present_and_equal(norm_email, ex_email)
+        phone_match = present_and_equal(norm_phone, ex_phone)
+        address_match = present_and_equal(norm_address, ex_address)
 
         score = (0.4 if email_match else 0.0) + (0.3 if phone_match else 0.0) + (0.3 if address_match else 0.0)
 
