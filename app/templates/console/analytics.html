@@ -15,9 +15,9 @@
 <div class="metrics-grid">
     {# Conversion Rate #}
     <div class="metric-tile">
-        <div class="metric-value {% if conversion.conversion_rate is not none and conversion.conversion_rate > 30 %}ok{% elif conversion.conversion_rate is not none and conversion.conversion_rate > 15 %}warn{% elif conversion.conversion_rate is not none %}danger{% endif %}">
+        <div class="metric-value {% if conversion.conversion_rate is not none and conversion.conversion_rate >= 0.30 %}ok{% elif conversion.conversion_rate is not none and conversion.conversion_rate >= 0.15 %}warn{% elif conversion.conversion_rate is not none %}danger{% endif %}">
             {% if conversion.conversion_rate is not none %}
-                {{ "%.1f"|format(conversion.conversion_rate) }}%
+                {{ "%.1f"|format(conversion.conversion_rate * 100) }}%
             {% else %}
                 N/A
             {% endif %}
@@ -186,7 +186,7 @@
             <div style="text-align:center; flex:1;">
                 <div style="font-size:48px; font-weight:700; color:var(--accent);">
                     {% if conversion.conversion_rate is not none %}
-                        {{ "%.1f"|format(conversion.conversion_rate) }}%
+                        {{ "%.1f"|format(conversion.conversion_rate * 100) }}%
                     {% else %}
                         N/A
                     {% endif %}

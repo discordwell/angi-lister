@@ -193,8 +193,14 @@ def get_conversion_detail(db: Session, days: int = 30) -> dict:
     booked = counts.get("booked", 0)
     won = counts.get("won", 0)
     lost = counts.get("lost", 0)
-    denom = booked + won + lost
-    conversion_rate = (booked + won) / denom if denom > 0 else None
+    # Canonical conversion rate (see ARCHITECTURE.md and get_metrics_summary):
+    # (booked + won) / (mapped + booked + won + lost). The denominator includes
+    # leads still in flight ("mapped") so this matches the dashboard KPI exactly —
+    # both pages show the same number for the same data.
+    denom = mapped + booked + won + lost
+    # round(…, 4) mirrors get_metrics_summary so the two functions agree on the
+    # raw value (not just the %.1f display) for the same set of leads.
+    conversion_rate = round((booked + won) / denom, 4) if denom > 0 else None
 
     return {
         "mapped": mapped,
