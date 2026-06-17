@@ -394,6 +394,77 @@ class TestPersonalizePipeline:
         ).all()
         assert len(events) == 1
 
+    def test_personalize_escapes_html(self, db, outbound_msg, lead, tenant, monkeypatch):
+        """Lead fields and LLM output must be HTML-escaped in body_html.
+
+        The hand-built HTML in personalize_outbound bypasses Jinja2's autoescape,
+        so a name or generated body containing markup must not inject into the
+        email (which is also previewed in the console lead-detail iframe).
+        """
+        lead.first_name = "Tom & <b>Jerry</b>"
+        db.flush()
+
+        monkeypatch.setattr(
+            "app.services.personalization.geocode_address",
+            lambda db, a, c, s, p: None,
+        )
+        monkeypatch.setattr(
+            "app.services.personalization.generate_email",
+            lambda sys, usr, **kw: (
+                "SEND",
+                "Here's your quote <script>alert('xss')</script> & more.",
+                900,
+            ),
+        )
+
+        result = personalize_outbound(db, outbound_msg)
+        assert result is True
+
+        body_html = outbound_msg.body_html
+        # No raw injected markup survives in the HTML body
+        assert "<script>" not in body_html
+        assert "<b>Jerry</b>" not in body_html
+        # Escaped forms are present instead
+        assert "&lt;script&gt;" in body_html
+        assert "Tom &amp; " in body_html
+        # The structural paragraph tags we add are not escaped away
+        assert "<p>Hi " in body_html
+        # Plain-text body keeps the human-readable (unescaped) content
+        assert "Tom & <b>Jerry</b>" in outbound_msg.body_text
+
+    def test_personalize_escapes_tenant_fields(self, db, outbound_msg, lead, tenant, monkeypatch):
+        """Tenant name (element content), phone and brand_color (attributes) escaped per context."""
+        tenant.name = "Ace <script>Co</script>"  # tag injection via element content
+        tenant.phone = "555' onmouseover='x"  # would break the tel: attribute unescaped
+        tenant.brand_color = '#fff"><script>alert(1)</script>'  # breaks out of style="..."
+        db.flush()
+
+        monkeypatch.setattr(
+            "app.services.personalization.geocode_address",
+            lambda db, a, c, s, p: None,
+        )
+        monkeypatch.setattr(
+            "app.services.personalization.generate_email",
+            lambda sys, usr, **kw: ("SEND", "Thanks for reaching out about your project!", 700),
+        )
+
+        result = personalize_outbound(db, outbound_msg)
+        assert result is True
+
+        body_html = outbound_msg.body_html
+        # Tag injection from the tenant name is neutralised
+        assert "<script>Co</script>" not in body_html
+        assert "&lt;script&gt;Co&lt;/script&gt;" in body_html
+        # The phone sits in the tel: href/style attributes; its quote must be
+        # escaped so it can't break out of the attribute.
+        assert "onmouseover='x" not in body_html
+        assert "555&#x27; onmouseover=&#x27;x" in body_html
+        # brand_color is interpolated into style="background:..." (and color:...);
+        # its quote/angle-brackets must be escaped so it can't break out of the
+        # style attribute and open a <script>.
+        assert "<script>alert(1)</script>" not in body_html
+        assert "#fff&quot;&gt;&lt;script&gt;" in body_html
+
     def test_llm_failure_raises(self, db, outbound_msg, lead, tenant, monkeypatch):
         """LLM error should propagate so email.py can catch and fallback."""
         from app.services.llm import LLMError

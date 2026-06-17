@@ -1,6 +1,7 @@
 """Monitoring service — schema drift detection, error rate alerting, and daily health checks."""
 
 import datetime as dt
+import html
 import logging
 import time
 
@@ -137,10 +138,12 @@ def send_alert(subject: str, body: str) -> bool:
     try:
         from app.services.email import send_email
 
+        # body can embed attacker-controlled JSON keys (drift "extra_fields"),
+        # so escape it before wrapping in <pre> for the HTML alert email.
         provider_id = send_email(
             recipient=settings.alert_email,
             subject=f"[Netic Alert] {subject}",
-            body_html=f"<pre>{body}</pre>",
+            body_html=f"<pre>{html.escape(body)}</pre>",
             body_text=body,
         )
         if provider_id:

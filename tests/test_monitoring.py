@@ -185,6 +185,29 @@ def test_send_alert_no_email_configured(db):
     assert result is False
 
 
+def test_send_alert_escapes_html_body(db, monkeypatch):
+    """The HTML alert email escapes its body — drift "extra_fields" are
+    attacker-controlled JSON keys from the webhook and must not inject markup."""
+    monkeypatch.setattr("app.services.monitoring.settings.alert_email", "ops@example.com")
+
+    captured: dict = {}
+
+    def fake_send_email(recipient, subject, body_html, body_text, sender=None):
+        captured["html"] = body_html
+        captured["text"] = body_text
+        return "provider-123"
+
+    # send_alert does `from app.services.email import send_email` at call time
+    monkeypatch.setattr("app.services.email.send_email", fake_send_email)
+
+    result = send_alert("Schema Drift", "extra field: <script>alert(1)</script> & co")
+    assert result is True
+    assert "<script>" not in captured["html"]
+    assert "&lt;script&gt;" in captured["html"]
+    # Plain-text body is delivered verbatim (no HTML context there)
+    assert "<script>alert(1)</script>" in captured["text"]
+
+
 # ---------------------------------------------------------------------------
 # debounce
 # ---------------------------------------------------------------------------

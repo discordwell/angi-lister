@@ -61,7 +61,10 @@ def _template_context(lead: Lead, tenant: Tenant) -> dict:
     """Build the Jinja2 context dict shared by HTML and text templates."""
     custom_body = None
     if tenant.intro_template:
-        # Render the tenant's custom body snippet (stored as a Jinja2 string)
+        # Render the tenant's custom body snippet (stored as a Jinja2 string).
+        # autoescape is on, so webhook-supplied lead fields are escaped here. The
+        # template prints {{ custom_body }} without |safe — see the warning in
+        # templates/email/intro.html before changing that.
         try:
             custom_tpl = _jinja_env.from_string(tenant.intro_template)
             custom_body = custom_tpl.render(

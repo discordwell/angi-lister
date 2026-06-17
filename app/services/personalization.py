@@ -8,6 +8,7 @@ Then a single LLM call (GPT-5.4) generates the email body and decides SEND/SKIP.
 """
 
 import datetime as dt
+import html
 import logging
 from dataclasses import dataclass, field
 
@@ -365,9 +366,20 @@ def personalize_outbound(db: Session, msg: OutboundMessage) -> bool:
         signoff += f"\n{tenant.phone}"
     full_text = f"{greeting}\n\n{body_text}\n{signoff}"
 
-    # HTML version
-    body_html_content = body_text.replace("\n\n", "</p><p>").replace("\n", "<br>")
+    # HTML version. Unlike the Jinja2 templates (which autoescape), this email
+    # is assembled by hand, so every interpolated value must be escaped here:
+    # lead fields come straight from the Angi webhook and body_text from the
+    # LLM. Without this, a name or generated body containing markup would inject
+    # into the email — and into the console's lead-detail iframe preview.
+    # Escape the LLM text BEFORE turning blank lines into <p>/<br> so the
+    # structural tags we add survive.
+    safe_name = html.escape(lead.first_name or "", quote=False)
+    safe_tenant = html.escape(tenant.name, quote=False)
     brand = tenant.brand_color or "#2563eb"
+    safe_brand = html.escape(brand)  # used in attributes — keep quote escaping
+    body_html_content = (
+        html.escape(body_text, quote=False).replace("\n\n", "</p><p>").replace("\n", "<br>")
+    )
 
     # Check for signature image
     signature = db.query(TenantFile).filter(
@@ -375,18 +387,25 @@ def personalize_outbound(db: Session, msg: OutboundMessage) -> bool:
     ).first()
     sig_html = ""
     if signature:
-        sig_url = f"{settings.app_url}/api/v1/files/{signature.id}"
+        sig_url = html.escape(f"{settings.app_url}/api/v1/files/{signature.id}")
         sig_html = f'<div style="margin-top:16px;"><img src="{sig_url}" alt="Signature" style="max-width:100%;"></div>'
 
+    phone_html = ""
+    if tenant.phone:
+        safe_phone = html.escape(tenant.phone)
+        phone_html = (
+            f"<p><a href='tel:{safe_phone}' style='color:{safe_brand};'>{safe_phone}</a></p>"
+        )
+
     msg.body_html = f"""<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-<div style="background:{brand};color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
-<h2 style="margin:0;">{tenant.name}</h2>
+<div style="background:{safe_brand};color:#fff;padding:16px 24px;border-radius:8px 8px 0 0;">
+<h2 style="margin:0;">{safe_tenant}</h2>
 </div>
 <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-top:none;">
-<p>Hi {lead.first_name},</p>
+<p>Hi {safe_name},</p>
 <p>{body_html_content}</p>
-<p>Warm regards,<br>The {tenant.name} Team</p>
-{"<p><a href='tel:" + tenant.phone + "' style='color:" + brand + ";'>" + tenant.phone + "</a></p>" if tenant.phone else ""}
+<p>Warm regards,<br>The {safe_tenant} Team</p>
+{phone_html}
 {sig_html}
 </div>
 </div>"""

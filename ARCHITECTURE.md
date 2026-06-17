@@ -41,6 +41,13 @@ The API never sends email inline. It inserts an `OutboundMessage` row with statu
 - Retry capability (failed sends are retried up to 3x; crashes during processing count as attempts too, so a message that keeps raising is marked failed instead of retried forever)
 - Audit trail (every send attempt is recorded)
 
+### Output Escaping in Outbound Email
+Lead fields (name, description) come straight from the Angi webhook and the personalized email body comes from the LLM — both untrusted. There are two HTML render paths and both must neutralize markup:
+- **Jinja2 templates** (`templates/email/*.html`, the default/fallback path) — autoescaping is on, so interpolation is safe by construction.
+- **The hand-built personalization HTML** (`services/personalization.py`) — assembled with f-strings, so it `html.escape()`s every interpolated value explicitly (element content with `quote=False`, attribute values with the quote-escaping default). The LLM body is escaped *before* blank lines are turned into `<p>`/`<br>` so the structural tags survive.
+
+The same stored `body_html` is previewed in the console (`lead_detail.html`) inside a `sandbox=""` `srcdoc` iframe, so a preview renders inertly (no scripts, opaque origin) even if an unescaped value ever reaches it. Alert emails (`services/monitoring.py::send_alert`) likewise escape their body, which can embed attacker-controlled JSON keys surfaced by schema-drift detection.
+
 ### Append-Only Event Log
 `LeadEvent` is an append-only table that records every significant state change: receipt captured, lead created, tenant mapped, email queued/sent/failed, duplicate detected, etc. Metrics are computed from these events rather than maintaining counters, which avoids drift during reprocessing.
 

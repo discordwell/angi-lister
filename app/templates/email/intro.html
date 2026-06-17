@@ -36,6 +36,12 @@
       <tr>
         <td class="body-content">
           <p class="greeting">Hi {{ first_name }},</p>
+          {# custom_body is the tenant's intro_template already rendered (lead fields
+             escaped by that inner autoescaping render). It is deliberately printed
+             WITHOUT |safe. Do NOT add |safe here: lead first_name/category/description
+             come from the Angi webhook, and rendering this Markup-safe without
+             guaranteeing those fields are escaped first turns this into a stored-XSS
+             sink. See services/email.py::_template_context. #}
           {% if custom_body %}
           {{ custom_body }}
           {% else %}
