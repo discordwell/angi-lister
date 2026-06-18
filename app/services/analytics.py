@@ -389,17 +389,25 @@ def get_system_health(db: Session) -> dict:
         .scalar()
     ) or 0
 
-    email_sent_24h = (
-        db.query(func.count(OutboundMessage.id))
-        .filter(OutboundMessage.sent_at >= cutoff_24h, OutboundMessage.status == "sent")
-        .scalar()
-    ) or 0
-
-    email_failures_24h = (
-        db.query(func.count(OutboundMessage.id))
-        .filter(OutboundMessage.queued_at >= cutoff_24h, OutboundMessage.status == "failed")
-        .scalar()
-    ) or 0
+    # email_failure_rate_24h is the complement of the canonical delivery rate
+    # (see metrics.py::get_metrics_summary and get_tenant_comparison above): it
+    # must be computed over the SAME population and window cohort, or the same
+    # data reads as a different health on this page vs the per-tenant table.
+    #   - population: non-simulated only. Simulated sends are a local/demo
+    #     artifact (the worker forces them to "sent"); counting them inflates the
+    #     denominator and silently dilutes a real failure spike below the 0.1
+    #     "critical" threshold, masking an actual email outage.
+    #   - window: anchor both sides on queued_at — the only non-null timestamp
+    #     every message has, and the anchor get_tenant_comparison uses. Anchoring
+    #     "sent" on sent_at while "failed" used queued_at mixed two cohorts in one
+    #     ratio (a slow-to-send message counted as sent but its failed sibling
+    #     queued in the same window did not).
+    email_msg_q = db.query(func.count(OutboundMessage.id)).filter(
+        OutboundMessage.queued_at >= cutoff_24h,
+        OutboundMessage.is_simulated == False,  # noqa: E712
+    )
+    email_sent_24h = email_msg_q.filter(OutboundMessage.status == "sent").scalar() or 0
+    email_failures_24h = email_msg_q.filter(OutboundMessage.status == "failed").scalar() or 0
 
     email_total_24h = email_sent_24h + email_failures_24h
     email_failure_rate_24h = email_failures_24h / email_total_24h if email_total_24h > 0 else 0.0

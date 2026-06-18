@@ -19,11 +19,13 @@ failed). These tests pin the formula and that the dashboard now agrees with the
 admin page for the same (non-simulated) data.
 """
 
+import datetime as dt
 import uuid
 
 from app.models import Lead, OutboundMessage, Tenant
-from app.services.analytics import get_tenant_comparison
+from app.services.analytics import get_system_health, get_tenant_comparison
 from app.services.metrics import get_metrics_summary
+from app.utils import utcnow
 
 
 def _lead(db, tenant_id: str) -> Lead:
@@ -142,3 +144,115 @@ class TestAdminDeliveryRatePopulation:
         # Both measure only the real sends: 4 / (4 + 1) = 0.8.
         assert admin_by_name[t.name]["delivery_rate"] == 0.8
         assert dash == admin_by_name[t.name]["delivery_rate"]
+
+
+def _sys_msg(
+    db,
+    tenant_id: str,
+    status: str,
+    *,
+    is_simulated: bool = False,
+    queued_ago_hours: float = 0.0,
+    sent_ago_hours: float | None = None,
+) -> OutboundMessage:
+    """Create a message with explicit timestamps for get_system_health tests.
+
+    Mirrors prod, where the worker sets status='sent' and sent_at together
+    (email.py). A 'sent' message therefore carries a sent_at; by default it
+    equals the queue time (near-instant send), but sent_ago_hours can override
+    it to model a slow/retried send queued outside the 24h window.
+    """
+    lead = _lead(db, tenant_id)
+    sent_at = None
+    if status == "sent":
+        ago = sent_ago_hours if sent_ago_hours is not None else queued_ago_hours
+        sent_at = utcnow() - dt.timedelta(hours=ago)
+    msg = OutboundMessage(
+        lead_id=lead.id,
+        tenant_id=tenant_id,
+        recipient=lead.email,
+        subject="s",
+        body_html="<p>x</p>",
+        body_text="x",
+        status=status,
+        is_simulated=is_simulated,
+        queued_at=utcnow() - dt.timedelta(hours=queued_ago_hours),
+        sent_at=sent_at,
+    )
+    db.add(msg)
+    db.flush()
+    return msg
+
+
+class TestSystemHealthDeliveryPopulation:
+    """get_system_health.email_failure_rate_24h is the complement of the canonical
+    delivery rate, so it must measure the same population (non-simulated) over the
+    same window cohort (queued_at). It previously counted simulated sends and
+    anchored 'sent' on sent_at while 'failed' used queued_at — two defects that
+    let demo traffic and a windowing asymmetry distort the system-health verdict.
+    The function had no test at all before this; these pin both fixes.
+    """
+
+    def test_simulated_sends_dont_mask_failure_rate(self, seeded_db):
+        """A pile of simulated sends must not dilute a real failure spike below
+        the 0.1 'critical' threshold — that would hide an actual email outage."""
+        t = seeded_db.query(Tenant).first()
+        # Real traffic: half the attempts failed — unambiguously critical.
+        _sys_msg(seeded_db, t.id, "sent")
+        _sys_msg(seeded_db, t.id, "sent")
+        _sys_msg(seeded_db, t.id, "failed")
+        _sys_msg(seeded_db, t.id, "failed")
+        # Demo/test traffic from the console 'simulate' button — must be ignored.
+        for _ in range(16):
+            _sys_msg(seeded_db, t.id, "sent", is_simulated=True)
+        seeded_db.flush()
+
+        health = get_system_health(seeded_db)
+        # Real failure rate is 2 / (2 + 2) = 0.5. With simulated sends counted
+        # (the old code) it was 2 / (2 + 18) = 0.1 — exactly at, not above, the
+        # threshold, so overall_health read 'warn' instead of 'critical'.
+        assert health["email_failure_rate_24h"] == 0.5
+        assert health["overall_health"] == "critical"
+
+    def test_failure_rate_is_complement_of_admin_delivery_rate(self, seeded_db):
+        """For the same data, the admin table's delivery_rate and system health's
+        failure_rate must sum to 1 — they measure one population two ways."""
+        t = seeded_db.query(Tenant).first()
+        _sys_msg(seeded_db, t.id, "sent")
+        _sys_msg(seeded_db, t.id, "sent")
+        _sys_msg(seeded_db, t.id, "sent")
+        _sys_msg(seeded_db, t.id, "sent")
+        _sys_msg(seeded_db, t.id, "failed")
+        # Simulated noise both functions must exclude.
+        for _ in range(10):
+            _sys_msg(seeded_db, t.id, "sent", is_simulated=True)
+        seeded_db.flush()
+
+        health = get_system_health(seeded_db)
+        admin = {row["tenant_name"]: row for row in get_tenant_comparison(seeded_db)}
+        delivery_rate = admin[t.name]["delivery_rate"]
+
+        # Non-simulated: 4 sent, 1 failed. delivery 4/5=0.8, failure 1/5=0.2.
+        assert delivery_rate == 0.8
+        assert health["email_failure_rate_24h"] == 0.2
+        assert round(health["email_failure_rate_24h"] + delivery_rate, 6) == 1.0
+
+    def test_window_anchor_excludes_old_queued_from_both_sides(self, seeded_db):
+        """The 24h cohort is 'messages queued in the last 24h'. A send queued
+        before the window must be excluded even if its sent_at is recent — the
+        same way a failure queued before the window is already excluded. Anchoring
+        'sent' on sent_at let an out-of-window send leak in and understate the
+        failure rate."""
+        t = seeded_db.query(Tenant).first()
+        # Queued 30h ago (outside the window) but only just delivered. The old
+        # sent_at anchor counted this; the queued_at cohort correctly drops it.
+        _sys_msg(seeded_db, t.id, "sent", queued_ago_hours=30, sent_ago_hours=1)
+        # The only message actually queued inside the window — and it failed.
+        _sys_msg(seeded_db, t.id, "failed", queued_ago_hours=1)
+        seeded_db.flush()
+
+        health = get_system_health(seeded_db)
+        # In-window cohort is just the one failure: 1 / (0 + 1) = 1.0. The old
+        # mixed anchors gave 1 / (1 + 1) = 0.5.
+        assert health["email_failure_rate_24h"] == 1.0
+        assert health["overall_health"] == "critical"
