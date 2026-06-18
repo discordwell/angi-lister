@@ -265,14 +265,20 @@ def get_tenant_comparison(db: Session, days: int = 30) -> list[dict]:
                 (r.sent_ts - r.created_ts).total_seconds()
             )
 
-    # Delivery rate per tenant: sent / (sent + failed)
+    # Delivery rate per tenant: sent / (sent + failed), non-simulated only — the
+    # same population the dashboard tile and the sibling personalization_rate
+    # below measure, so "delivery rate" means real delivery everywhere.
     delivery_rows = (
         db.query(
             OutboundMessage.tenant_id,
             OutboundMessage.status,
             func.count(OutboundMessage.id).label("cnt"),
         )
-        .filter(OutboundMessage.queued_at >= cutoff, OutboundMessage.tenant_id.isnot(None))
+        .filter(
+            OutboundMessage.queued_at >= cutoff,
+            OutboundMessage.is_simulated == False,  # noqa: E712
+            OutboundMessage.tenant_id.isnot(None),
+        )
         .group_by(OutboundMessage.tenant_id, OutboundMessage.status)
         .all()
     )

@@ -58,15 +58,26 @@ def get_metrics_summary(db: Session, tenant_id: str | None = None) -> dict:
     if total_leads_all > 0:
         duplicate_rate = round(dup_count / total_leads_all, 4)
 
-    # Delivery success rate (sent vs total outbound messages, excluding simulated)
+    # Delivery success rate: sent / (sent + failed) — terminal send outcomes only.
+    # The denominator counts only messages that reached a final delivery state.
+    # Messages still in flight (pending/generating) or intentionally not sent by
+    # the personalization engine (declined/skipped) are NOT delivery failures and
+    # must not drag the rate down — otherwise a queue backlog or a tenant that
+    # declines/skips most leads shows a spuriously low rate (and the tile reads
+    # red) even when every message actually attempted was delivered. This is the
+    # canonical definition shared with get_tenant_comparison (admin page) and
+    # get_system_health: terminal send outcomes, non-simulated. Each page applies
+    # its own scope window (this dashboard tile is all-time; the admin table is
+    # the last 30 days), so the two agree for the same data.
     msg_q = db.query(func.count(OutboundMessage.id)).filter(OutboundMessage.is_simulated == False)  # noqa: E712
     if tenant_id:
         msg_q = msg_q.filter(OutboundMessage.tenant_id == tenant_id)
-    total_messages: int = msg_q.scalar() or 0
     sent_messages: int = msg_q.filter(OutboundMessage.status == "sent").scalar() or 0
+    failed_messages: int = msg_q.filter(OutboundMessage.status == "failed").scalar() or 0
+    delivery_attempts = sent_messages + failed_messages
     delivery_success_rate: float | None = None
-    if total_messages > 0:
-        delivery_success_rate = round(sent_messages / total_messages, 4)
+    if delivery_attempts > 0:
+        delivery_success_rate = round(sent_messages / delivery_attempts, 4)
 
     # Median speed-to-lead: time between lead_created event and email_sent event
     # for each lead that has both events.
