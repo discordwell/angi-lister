@@ -89,22 +89,27 @@ def get_conversion_funnel(db: Session, days: int = 30) -> dict:
         .join(sent_sub, created_sub.c.lead_id == sent_sub.c.lead_id)
         .all()
     )
+    # Drop clock-skew negatives (email_sent before lead_created) so this median
+    # matches the dashboard's (metrics.py::get_metrics_summary), which applies the
+    # same guard. Speed-to-lead uses one formula everywhere; only the window
+    # differs by page (this page is windowed; the dashboard tile is all-time).
     deltas = [
         (p.sent_ts - p.created_ts).total_seconds()
         for p in pairs
-        if p.created_ts and p.sent_ts
+        if p.created_ts and p.sent_ts and p.sent_ts >= p.created_ts
     ]
-    median_stl = median(deltas) if deltas else None
+    # round(…, 2) mirrors the dashboard (metrics.py::get_metrics_summary) so the
+    # two agree on the raw value, not just the rendered %.0f/%.1f — the same reason
+    # conversion rate rounds identically in both functions.
+    median_stl = round(median(deltas), 2) if deltas else None
 
-    booked = counts.get("outcome_booked", 0)
-    won = counts.get("outcome_won", 0)
-    lost = counts.get("outcome_lost", 0)
-    denom = booked + won + lost
-    conversion_rate = (booked + won) / denom if denom > 0 else None
-
+    # Conversion rate is intentionally NOT computed here. The canonical formula
+    # (booked + won) / (mapped + booked + won + lost) lives in get_conversion_detail
+    # and get_metrics_summary; an event-based rate over (booked + won + lost) would
+    # omit in-flight ("mapped") leads and disagree with the dashboard tile rendered
+    # on this same page. See ARCHITECTURE.md (Conversion Tracking).
     result = {et: counts.get(et, 0) for et in event_types}
     result["median_speed_to_lead_seconds"] = median_stl
-    result["conversion_rate"] = conversion_rate
     return result
 
 
@@ -260,7 +265,9 @@ def get_tenant_comparison(db: Session, days: int = 30) -> list[dict]:
     )
     stl_by_tenant: dict[str, list[float]] = {}
     for r in stl_rows:
-        if r.created_ts and r.sent_ts:
+        # Same clock-skew guard as the dashboard (metrics.py): a sent timestamp
+        # before the created timestamp is bogus and must not pull the median down.
+        if r.created_ts and r.sent_ts and r.sent_ts >= r.created_ts:
             stl_by_tenant.setdefault(r.tenant_id, []).append(
                 (r.sent_ts - r.created_ts).total_seconds()
             )
@@ -318,7 +325,8 @@ def get_tenant_comparison(db: Session, days: int = 30) -> list[dict]:
     for tid, tenant in tenants.items():
         lc = lead_counts.get(tid, 0)
         stl_list = stl_by_tenant.get(tid, [])
-        speed = median(stl_list) if stl_list else None
+        # round(…, 2) to match the dashboard/funnel raw value (see get_metrics_summary).
+        speed = round(median(stl_list), 2) if stl_list else None
 
         dstats = delivery_by_tenant.get(tid, {})
         sent = dstats.get("sent", 0)
