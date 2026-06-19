@@ -442,6 +442,43 @@ class TestPersonalizePipeline:
         assert result is False
         assert outbound_msg.status == "skipped"
 
+    def test_terse_llm_skip_actually_skips(self, db, outbound_msg, lead, tenant, monkeypatch):
+        """End-to-end through the REAL llm parser: a terse "DECISION: SKIP" must
+        skip the lead, not raise.
+
+        Unlike the test above (which mocks generate_email's return), this fakes
+        only the OpenAI client, so the real generate_email parses the response.
+        It covers the bug where a 14-char "DECISION: SKIP" was rejected as
+        "unusably short" and raised LLMError — which personalize_outbound
+        propagates and process_outbound_message turns into a Jinja2-template
+        SEND, emailing the very repeat customer the model chose to skip.
+        Pre-fix this raised LLMError; post-fix it returns False / status=skipped.
+        """
+        import types
+
+        import app.services.llm as llm
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "openai_api_key", "test-openai-key")
+        monkeypatch.setattr(
+            "app.services.personalization.geocode_address",
+            lambda db, a, c, s, p: None,
+        )
+
+        def fake_client():
+            message = types.SimpleNamespace(content="DECISION: SKIP")
+            choice = types.SimpleNamespace(message=message)
+            resp = types.SimpleNamespace(choices=[choice])
+            completions = types.SimpleNamespace(create=lambda **kw: resp)
+            return types.SimpleNamespace(chat=types.SimpleNamespace(completions=completions))
+
+        monkeypatch.setattr(llm, "_get_client", fake_client)
+
+        result = personalize_outbound(db, outbound_msg)
+        assert result is False
+        assert outbound_msg.status == "skipped"
+        assert outbound_msg.generation_method == "skipped"
+
     def test_personalize_declines_blacklisted(self, db, outbound_msg, lead, tenant, job_rules, monkeypatch):
         lead.category = "Indianapolis - Roofing Repair"
         db.flush()
