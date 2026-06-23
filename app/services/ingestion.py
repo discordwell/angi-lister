@@ -126,6 +126,12 @@ def process_lead(
         is_simulated=is_simulated,
     )
     db.add(msg)
+    # msg.id is a flush-time default (default=lambda: uuid4()), so it is still
+    # None on the pending instance. Flush now to assign it before the event
+    # payload captures it — otherwise email_queued records outbound_message_id=null
+    # while the later email_sent/email_failed events (built post-flush) carry the
+    # real id, leaving the audit trail unable to tie the queued event to its message.
+    db.flush()
 
     db.add(LeadEvent(
         lead_id=lead.id,

@@ -236,6 +236,9 @@ def api_replay_unmapped(tenant_id: str, db: Session = Depends(get_bypass_db)):
             status="pending",
         )
         db.add(msg)
+        # Flush to assign msg.id (a flush-time default) before the event payload
+        # captures it; otherwise email_queued records outbound_message_id=null.
+        db.flush()
         db.add(LeadEvent(
             lead_id=lead.id,
             tenant_id=tenant_id,

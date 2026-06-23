@@ -56,6 +56,8 @@ The same stored `body_html` is previewed in the console (`lead_detail.html`) ins
 ### Append-Only Event Log
 `LeadEvent` is an append-only table that records every significant state change: receipt captured, lead created, tenant mapped, email queued/sent/failed, duplicate detected, etc. Metrics are computed from these events rather than maintaining counters, which avoids drift during reprocessing.
 
+An event's `payload` often references the row it is about by id — e.g. `email_queued`, `email_sent`, and `email_failed` all carry the `outbound_message_id` so the queue → send/fail lifecycle of one message is traceable through the log. Because `OutboundMessage.id` is a **flush-time** default (`default=lambda: uuid4()`), the message must be flushed before its id is read into a payload; building the `email_queued` event from a freshly-`add`-ed (un-flushed) message captured `outbound_message_id=null`, while the later `email_sent`/`email_failed` events — built after the worker has flushed — carried the real id, so the queued event was the one link the audit trail couldn't follow. Both queue sites (`ingestion.py::process_lead` on the hot path and `api.py::api_replay_unmapped` for replayed leads) now flush before referencing the id; `tests/test_ingestion.py` pins the invariant on both. The webhook handler already followed this convention for `receipt.id` (it flushes the receipt before any event references it).
+
 ### Duplicate Detection
 Two levels:
 1. **CorrelationId idempotency** — exact retries are no-ops
